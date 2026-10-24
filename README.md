@@ -109,9 +109,9 @@ cd AdaptAI
    ```
 
 4. **Configure Environment Variables:**
-   Copy the example configuration file:
-   - **Windows:** `copy .env.example .env`
-   - **macOS/Linux:** `cp .env.example .env`
+   Copy the example configuration file in the root directory:
+   - **Windows:** `copy .env.example .env` (or from backend: `copy ..\.env.example ..\.env`)
+   - **macOS/Linux:** `cp .env.example .env` (or from backend: `cp ../.env.example ../.env`)
 
    Open `.env` in your text editor and set your `DATABASE_URL` and `DATABASE_SYNC_URL`.
 

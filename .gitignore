@@ -15,9 +15,8 @@ frontend/.env.*
 *.key
 *.cert
 *.crt
-# Allow example templates
+# Allow example template
 !.env.example
-!backend/.env.example
 
 # ------------------------------------------------------------------------------
 # Agent, Internal IDE & Brain Caches (Do not commit to GitHub)
