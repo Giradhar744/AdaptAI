@@ -1,0 +1,41 @@
+# Supported Disability Types (PROJECT.md §5 & §15.1)
+# Note: Neutral starting defaults, no unsupported clinical claims (Rule §10.3)
+disability_types:
+  - code: "asd"
+    label: "Autism Spectrum Disorder"
+    description: "Support for sensory considerations, explicit structure, and routine."
+    hint_style_config:
+      pacing: "deliberate"
+      directness: "explicit"
+      visual_cues: true
+      max_sentences: 3
+      allow_metaphors: false
+
+  - code: "adhd"
+    label: "Attention-Deficit/Hyperactivity Disorder"
+    description: "Support for attention maintenance, chunked instructions, and concise feedback."
+    hint_style_config:
+      pacing: "snappy"
+      chunking: true
+      bullet_points: true
+      max_sentences: 2
+      allow_metaphors: true
+
+  - code: "dyslexia"
+    label: "Dyslexia"
+    description: "Support for visual reading ease, simplified sentence structure, and phonological clarity."
+    hint_style_config:
+      reading_load: "light"
+      sentence_structure: "simple"
+      phonetic_breakdowns: true
+      max_sentences: 2
+      audio_preferred: true
+
+  - code: "other_idd"
+    label: "Other Intellectual & Developmental Disabilities"
+    description: "Support tailored to individual developmental pacing and multi-step scaffolding."
+    hint_style_config:
+      pacing: "step_by_step"
+      scaffold_depth: "high"
+      max_sentences: 3
+      visual_cues: true

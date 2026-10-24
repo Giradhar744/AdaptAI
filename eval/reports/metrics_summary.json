@@ -1,0 +1,174 @@
+{
+  "adapt_ai": {
+    "baseline_key": "adapt_ai",
+    "baseline_name": "AdaptAI (Proposed Full System)",
+    "total_sessions_evaluated": 32,
+    "struggling_sessions_count": 24,
+    "support_trigger_count": 23,
+    "mean_time_to_support_items": 0.04,
+    "preemptive_support_rate": 100.0,
+    "student_consent_rate": 66.4,
+    "forced_adaptation_rate": 0.0,
+    "mean_disability_alignment": 1.0,
+    "simulated_completion_rate": 100.0,
+    "profile_breakdown": {
+      "hesitant_adhd": {
+        "sessions": 8,
+        "mean_time_to_support": 0,
+        "preemptive_rate": 87.5,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "dyslexia_slow_reader": {
+        "sessions": 8,
+        "mean_time_to_support": 0.12,
+        "preemptive_rate": 100.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "cognitive_overload_struggler": {
+        "sessions": 8,
+        "mean_time_to_support": 0,
+        "preemptive_rate": 100.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "smooth_learner": {
+        "sessions": 8,
+        "mean_time_to_support": null,
+        "preemptive_rate": 12.5,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      }
+    }
+  },
+  "reactive": {
+    "baseline_key": "reactive",
+    "baseline_name": "Reactive Baseline",
+    "total_sessions_evaluated": 32,
+    "struggling_sessions_count": 24,
+    "support_trigger_count": 10,
+    "mean_time_to_support_items": 1.7,
+    "preemptive_support_rate": 0.0,
+    "student_consent_rate": 100.0,
+    "forced_adaptation_rate": 0.0,
+    "mean_disability_alignment": 1.0,
+    "simulated_completion_rate": 100.0,
+    "profile_breakdown": {
+      "hesitant_adhd": {
+        "sessions": 8,
+        "mean_time_to_support": 1,
+        "preemptive_rate": 0.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "dyslexia_slow_reader": {
+        "sessions": 8,
+        "mean_time_to_support": 2,
+        "preemptive_rate": 0.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "cognitive_overload_struggler": {
+        "sessions": 8,
+        "mean_time_to_support": 1.86,
+        "preemptive_rate": 0.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "smooth_learner": {
+        "sessions": 8,
+        "mean_time_to_support": null,
+        "preemptive_rate": 0.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      }
+    }
+  },
+  "non_consent": {
+    "baseline_key": "non_consent",
+    "baseline_name": "Non-Consent Baseline",
+    "total_sessions_evaluated": 32,
+    "struggling_sessions_count": 24,
+    "support_trigger_count": 23,
+    "mean_time_to_support_items": 0.04,
+    "preemptive_support_rate": 100.0,
+    "student_consent_rate": 0.0,
+    "forced_adaptation_rate": 100.0,
+    "mean_disability_alignment": 1.0,
+    "simulated_completion_rate": 100.0,
+    "profile_breakdown": {
+      "hesitant_adhd": {
+        "sessions": 8,
+        "mean_time_to_support": 0,
+        "preemptive_rate": 87.5,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "dyslexia_slow_reader": {
+        "sessions": 8,
+        "mean_time_to_support": 0.12,
+        "preemptive_rate": 100.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "cognitive_overload_struggler": {
+        "sessions": 8,
+        "mean_time_to_support": 0,
+        "preemptive_rate": 100.0,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      },
+      "smooth_learner": {
+        "sessions": 8,
+        "mean_time_to_support": null,
+        "preemptive_rate": 12.5,
+        "mean_alignment": 1.0,
+        "completion_rate": 100.0
+      }
+    }
+  },
+  "non_disability_aware": {
+    "baseline_key": "non_disability_aware",
+    "baseline_name": "Non-Disability-Aware Baseline",
+    "total_sessions_evaluated": 32,
+    "struggling_sessions_count": 24,
+    "support_trigger_count": 23,
+    "mean_time_to_support_items": 0.04,
+    "preemptive_support_rate": 100.0,
+    "student_consent_rate": 66.4,
+    "forced_adaptation_rate": 0.0,
+    "mean_disability_alignment": 0.47,
+    "simulated_completion_rate": 100.0,
+    "profile_breakdown": {
+      "hesitant_adhd": {
+        "sessions": 8,
+        "mean_time_to_support": 0,
+        "preemptive_rate": 87.5,
+        "mean_alignment": 0.35,
+        "completion_rate": 100.0
+      },
+      "dyslexia_slow_reader": {
+        "sessions": 8,
+        "mean_time_to_support": 0.12,
+        "preemptive_rate": 100.0,
+        "mean_alignment": 0.35,
+        "completion_rate": 100.0
+      },
+      "cognitive_overload_struggler": {
+        "sessions": 8,
+        "mean_time_to_support": 0,
+        "preemptive_rate": 100.0,
+        "mean_alignment": 0.35,
+        "completion_rate": 100.0
+      },
+      "smooth_learner": {
+        "sessions": 8,
+        "mean_time_to_support": null,
+        "preemptive_rate": 12.5,
+        "mean_alignment": 0.84,
+        "completion_rate": 100.0
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# Priority Engine Ordering Hierarchy (PROJECT.md §5, §9.2)
+# Immutable rule: safety > student consent > pedagogy > nudges
+priority_order:
+  - rank: 1
+    class_name: "safety"
+    description: "Highest priority: high-risk cognitive/sensory overload interventions (e.g., offering a break)."
+    requires_consent: false
+    can_override_consent: true
+
+  - rank: 2
+    class_name: "consent"
+    description: "Student or parent explicit consent decisions on record. Outranks standard pedagogical suggestions."
+    requires_consent: false
+    can_override_consent: false
+
+  - rank: 3
+    class_name: "pedagogy"
+    description: "ZPD scaffolding modifications and hint depth adjustments."
+    requires_consent: true
+    can_override_consent: false
+
+  - rank: 4
+    class_name: "nudges"
+    description: "Low-urgency encouraging suggestions and pacing advice. Suppressed if student frequently declines."
+    requires_consent: true
+    can_override_consent: false

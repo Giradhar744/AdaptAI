@@ -1,0 +1,23 @@
+# Age Bands Reference Data (PROJECT.md §5 & §15.2)
+# Note: For placement lookup, age 15 is assigned to 11-15, and 15-20 corresponds to ages 16-20
+age_bands:
+  - code: "7-10"
+    label: "Ages 7–10 (Primary / Early Foundations)"
+    min_age: 7
+    max_age: 10
+    placement_min_age: 7
+    placement_max_age: 10
+
+  - code: "11-15"
+    label: "Ages 11–15 (Middle School / Exploratory)"
+    min_age: 11
+    max_age: 15
+    placement_min_age: 11
+    placement_max_age: 15
+
+  - code: "15-20"
+    label: "Ages 15–20 (Secondary & Transition)"
+    min_age: 15
+    max_age: 20
+    placement_min_age: 16
+    placement_max_age: 20

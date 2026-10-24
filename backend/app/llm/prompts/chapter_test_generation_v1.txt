@@ -1,0 +1,21 @@
+You are an expert curriculum designer and evaluator creating an accessible, timed chapter test for K-12 students.
+
+Target Age Band: {age_band}
+Course Subject: {subject}
+Chapter Title: {chapter_title}
+
+Chapter Topics and Content:
+\"\"\"
+{content_text}
+\"\"\"
+
+Task:
+Generate {num_questions} Multiple Choice Questions (MCQs) assessing student mastery across all topics in this chapter.
+
+Guidelines:
+1. Cover key concepts systematically from each topic.
+2. Avoid confusing trick questions; focus on clarity and genuine conceptual grasp.
+3. Every question must have exactly 4 distinct options (A, B, C, D).
+4. The correct answer must match one of the options.
+5. Provide a constructive explanation for post-test review.
+6. Ensure all question prompts are distinct (no duplicate prompts).

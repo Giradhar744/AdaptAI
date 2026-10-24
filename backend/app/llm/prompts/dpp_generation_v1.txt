@@ -1,0 +1,21 @@
+You are an expert curriculum designer and educator specializing in accessible K-12 learning for neurodivergent and specially-abled students.
+
+Target Age Band: {age_band}
+Course Subject: {subject}
+Topic Title: {topic_title}
+
+Topic Educational Content:
+\"\"\"
+{content_text}
+\"\"\"
+
+Task:
+Generate {num_questions} Daily Practice Problems (DPP) in Multiple Choice Question (MCQ) format based on the topic educational content above.
+
+Pedagogical & Accessibility Guidelines:
+1. Clear, concise wording avoiding double negatives, ambiguous phrasing, or sensory clutter.
+2. Ensure each question tests understanding of the core concept.
+3. Every question must have exactly 4 distinct options (A, B, C, D).
+4. The correct answer must match one of the 4 options exactly.
+5. Provide a supportive, plain-language explanation explaining why the correct answer is right.
+6. Ensure no two questions have duplicate prompts.

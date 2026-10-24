@@ -1,0 +1,20 @@
+# Scaffolding Depth Levels (PROJECT.md §1.1, §5, §10.3)
+# Ordering rule: worked_example -> partial_hint -> independent
+scaffold_levels:
+  - ordinal: 1
+    code: "worked_example"
+    label: "Worked Example"
+    description: "Complete walk-through of an isomorphic problem demonstrating the full solution process."
+    reveals_target_answer: false
+
+  - ordinal: 2
+    code: "partial_hint"
+    label: "Partial Hint"
+    description: "Targeted clue addressing the student's specific step without giving away the final answer."
+    reveals_target_answer: false
+
+  - ordinal: 3
+    code: "independent"
+    label: "Independent Attempt"
+    description: "Independent problem solving without hints."
+    reveals_target_answer: false

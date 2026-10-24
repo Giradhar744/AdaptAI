@@ -1,0 +1,46 @@
+services:
+  # 1. FastAPI Backend Service
+  - type: web
+    name: adaptai-backend
+    runtime: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: adaptai-postgres
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LLM_PROVIDER
+        value: fake
+      - key: TTS_PROVIDER
+        value: fake
+      - key: STT_PROVIDER
+        value: fake
+      - key: VIDEO_PROVIDER
+        value: fake
+      - key: JWT_SECRET
+        generateValue: true
+
+  # 2. Vite + React Frontend Static Site
+  - type: web
+    name: adaptai-frontend
+    runtime: node
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: adaptai-backend
+          property: host
+
+databases:
+  # Managed Cloud PostgreSQL Instance
+  - name: adaptai-postgres
+    databaseName: adaptai
+    user: adaptai_user
+    plan: free
