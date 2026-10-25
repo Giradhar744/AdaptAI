@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 
 export interface SafeTestQuestion {
   id: string;
@@ -79,8 +80,11 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
   testId = 'test-sample-001',
   chapterTitle = 'Cell Biology & Transport',
   courseTitle = 'Natural Sciences',
+  studentId: initialStudentId = 'student-dev-001',
   onBackToHome,
 }) => {
+  const { user, token } = useAuth();
+  const studentId = user?.student_id || initialStudentId;
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [attemptNumber, setAttemptNumber] = useState(1);
   const [isFirstAttempt, setIsFirstAttempt] = useState(true);
@@ -94,8 +98,12 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
   useEffect(() => {
     const initAttempt = async () => {
       try {
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const res = await fetch(`/api/v1/chapter-tests/${testId}/attempts`, {
           method: 'POST',
+          headers,
         });
         if (res.ok) {
           const data = await res.json();
@@ -113,7 +121,7 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
       }
     };
     initAttempt();
-  }, [testId]);
+  }, [testId, token]);
 
   // Server-enforced countdown timer
   useEffect(() => {
@@ -147,9 +155,12 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
 
     try {
       if (attemptId && attemptId !== 'sample-att-001') {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const res = await fetch(`/api/v1/attempts/${attemptId}/submit`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ answers: answersPayload }),
         });
         if (res.ok) {
@@ -214,6 +225,9 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
 
         {/* Attempt Badge (First Attempt Rule: PROJECT.md §11 rule 1) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+            Student: <strong>{user?.display_name || studentId}</strong>
+          </span>
           <span
             className="brand-badge"
             style={{

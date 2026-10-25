@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthModal } from './components/AuthModal';
 import StudentOnboarding from './features/student/StudentOnboarding';
 import PracticeSession from './features/student/PracticeSession';
 import ConsentDecisionCenter from './features/student/ConsentDecisionCenter';
 import TimedChapterTest from './features/student/TimedChapterTest';
 import TeacherDashboard from './features/teacher/TeacherDashboard';
+import heroImg from './assets/hero.png';
 
 interface HealthData {
   status: string;
@@ -13,12 +16,20 @@ interface HealthData {
   agents: Record<string, boolean>;
 }
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const { user, isAuthenticated, logout } = useAuth();
+
   const [dyslexicFont, setDyslexicFont] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
   const [fontScale, setFontScale] = useState(1);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Auth modal state
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authDefaultMode, setAuthDefaultMode] = useState<'login' | 'register'>('login');
+  const [authDefaultRole, setAuthDefaultRole] = useState<'student' | 'teacher'>('student');
+
   const [activeView, setActiveView] = useState<
     'home' | 'student_onboarding' | 'practice_session' | 'consent_center' | 'chapter_test' | 'teacher_dashboard'
   >('home');
@@ -69,6 +80,12 @@ export const App: React.FC = () => {
         setLoading(false);
       });
   }, []);
+
+  const openAuth = (mode: 'login' | 'register', role: 'student' | 'teacher') => {
+    setAuthDefaultMode(mode);
+    setAuthDefaultRole(role);
+    setIsAuthModalOpen(true);
+  };
 
   return (
     <div>
@@ -127,6 +144,7 @@ export const App: React.FC = () => {
 
       {/* Main Container */}
       <main className="container">
+        {/* Navigation & Header Brand */}
         <header className="header-brand">
           <div
             className="brand-title"
@@ -136,11 +154,49 @@ export const App: React.FC = () => {
             <span>AdaptAI</span>
             <span className="brand-badge">Phase III</span>
           </div>
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-            System Status:{' '}
-            <strong style={{ color: 'var(--primary)' }}>
-              {loading ? 'Checking...' : health?.status}
-            </strong>
+
+          <div className="nav-actions">
+            <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginRight: 'var(--space-2)' }}>
+              Status:{' '}
+              <strong style={{ color: 'var(--primary)' }}>
+                {loading ? 'Checking...' : health?.status}
+              </strong>
+            </div>
+
+            {isAuthenticated && user ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span className="user-pill">
+                  {user.role === 'teacher' ? '👩‍🏫 Teacher' : '🎓 Student'}: <strong>{user.display_name}</strong>
+                </span>
+                <button
+                  type="button"
+                  className="btn-a11y"
+                  onClick={logout}
+                  style={{ color: 'var(--color-danger-text)' }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => openAuth('login', 'student')}
+                  style={{ padding: '6px 14px', fontSize: '0.875rem' }}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={() => openAuth('register', 'student')}
+                  style={{ padding: '6px 14px', fontSize: '0.875rem' }}
+                >
+                  Register
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -156,20 +212,70 @@ export const App: React.FC = () => {
           <TeacherDashboard onBackToHome={() => setActiveView('home')} />
         ) : (
           <>
-            <section style={{ marginTop: 'var(--space-8)' }}>
-              <h1 style={{ fontSize: '1.875rem', fontWeight: 800, marginBottom: 'var(--space-2)' }}>
-                Disability-Inclusive Educational Learning Platform
-              </h1>
-              <p style={{ color: 'var(--text-secondary)', maxWidth: '720px', fontSize: '1.0625rem' }}>
-                A consent-first learning space tailored for neurodivergent and specially-abled students,
-                featuring proactive ZPD scaffolding, multimodal hints, and educator analytics.
-              </p>
+            {/* Redesigned Hero Section with hero.png */}
+            <section className="hero-section" aria-label="Introduction">
+              <div>
+                <div className="hero-badge">
+                  <span>✨</span> Neurodiversity-First Educational Platform
+                </div>
+                <h1 style={{ fontSize: '2.25rem', fontWeight: 800, lineHeight: 1.25, marginBottom: 'var(--space-4)', color: 'var(--text-primary)' }}>
+                  Accessible, Adaptive Learning Tailored to Every Student's Unique Needs
+                </h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem', lineHeight: 1.6, marginBottom: 'var(--space-6)', maxWidth: '640px' }}>
+                  Engineered specifically for learners with Autism Spectrum Disorder (ASD), ADHD, Dyslexia, and developmental learning differences. Featuring consent-first adaptation, calm ZPD scaffolding, and real-time educator analytics.
+                </p>
+
+                <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
+                  <button
+                    type="button"
+                    className="button-primary"
+                    onClick={() => {
+                      if (!isAuthenticated) openAuth('login', 'student');
+                      else setActiveView('student_onboarding');
+                    }}
+                    style={{ padding: '12px 24px', fontSize: '1rem' }}
+                  >
+                    🎓 Enter Student Portal →
+                  </button>
+
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => {
+                      if (!isAuthenticated) openAuth('login', 'teacher');
+                      else setActiveView('teacher_dashboard');
+                    }}
+                    style={{ padding: '12px 24px', fontSize: '1rem' }}
+                  >
+                    👩‍🏫 Teacher & Educator Studio →
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                  <span className="btn-a11y">✓ Autism (ASD) Gentle Sensory</span>
+                  <span className="btn-a11y">✓ ADHD Calm Pacing</span>
+                  <span className="btn-a11y">✓ Dyslexia-Friendly Typography</span>
+                  <span className="btn-a11y">✓ Immutable Consent Ledger</span>
+                </div>
+              </div>
+
+              <div className="hero-visual">
+                <img
+                  src={heroImg}
+                  alt="AdaptAI Adaptive Multi-Layered Learning Platform Illustration"
+                  className="hero-img"
+                />
+              </div>
             </section>
 
             {/* Portal Entry Cards */}
             <section className="portal-grid" aria-label="Portal Navigation">
+              {/* Student Card */}
               <article className="portal-card">
-                <h2>Student & Parent Learning Portal</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                  <h2>Student & Parent Learning Portal</h2>
+                  <span className="brand-badge">Learners</span>
+                </div>
                 <p>
                   Complete a guided onboarding diagnostic, explore age-appropriate courses, practice with
                   calm hints, and attempt timed chapter tests with mastery re-attempt protection.
@@ -210,20 +316,37 @@ export const App: React.FC = () => {
                 </div>
               </article>
 
+              {/* Teacher Card */}
               <article className="portal-card">
-                <h2>Teacher & Educator Portal</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                  <h2>Teacher & Educator Portal</h2>
+                  <span className="brand-badge" style={{ background: '#e0e7ff', color: '#4338ca' }}>
+                    Educators
+                  </span>
+                </div>
                 <p>
-                  Author structured subject courses, upload video lessons, generate Daily Practice Problems (DPP)
+                  Author structured subject courses, add curriculum chapters, generate Daily Practice Problems (DPP)
                   with AI co-pilot, and inspect first-attempt star ratings and class mastery analytics.
                 </p>
-                <button
-                  type="button"
-                  className="button-primary"
-                  id="btn-teacher-portal"
-                  onClick={() => setActiveView('teacher_dashboard')}
-                >
-                  Enter Teacher Dashboard →
-                </button>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="button-primary"
+                    id="btn-teacher-portal"
+                    onClick={() => setActiveView('teacher_dashboard')}
+                  >
+                    Enter Teacher Dashboard →
+                  </button>
+                  {!isAuthenticated && (
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => openAuth('login', 'teacher')}
+                    >
+                      Teacher Sign In →
+                    </button>
+                  )}
+                </div>
               </article>
             </section>
 
@@ -234,13 +357,13 @@ export const App: React.FC = () => {
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)', fontSize: '0.875rem' }}>
                 <div>
-                  <strong>LLM Provider:</strong> {health?.providers.llm || 'fake'}
+                  <strong>LLM Provider:</strong> {health?.providers?.llm || 'fake'}
                 </div>
                 <div>
-                  <strong>Speech Modality (TTS/STT):</strong> {health?.providers.tts || 'fake'} / {health?.providers.stt || 'fake'}
+                  <strong>Speech Modality (TTS/STT):</strong> {health?.providers?.tts || 'fake'} / {health?.providers?.stt || 'fake'}
                 </div>
                 <div>
-                  <strong>Video Store:</strong> {health?.providers.video || 'fake'}
+                  <strong>Video Store:</strong> {health?.providers?.video || 'fake'}
                 </div>
                 <div>
                   <strong>Priority Order:</strong> Safety &gt; Consent &gt; Pedagogy &gt; Nudges
@@ -250,7 +373,23 @@ export const App: React.FC = () => {
           </>
         )}
       </main>
+
+      {/* Global Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        defaultMode={authDefaultMode}
+        defaultRole={authDefaultRole}
+      />
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

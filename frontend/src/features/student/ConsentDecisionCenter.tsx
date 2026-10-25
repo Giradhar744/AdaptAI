@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 
 export interface PendingProposal {
   ledger_id: string;
@@ -49,9 +50,11 @@ interface ConsentDecisionCenterProps {
 }
 
 export const ConsentDecisionCenter: React.FC<ConsentDecisionCenterProps> = ({
-  studentId = 'student-dev-001',
+  studentId: initialStudentId = 'student-dev-001',
   onBackToHome,
 }) => {
+  const { user } = useAuth();
+  const studentId = user?.student_id || initialStudentId;
   const [pendingProposals, setPendingProposals] = useState<PendingProposal[]>([]);
   const [preferences, setPreferences] = useState<StudentPreference[]>([]);
   const [trustProfile, setTrustProfile] = useState<TrustProfile | null>(null);

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { CourseAuthoringModal } from './CourseAuthoringModal';
 
 export interface CourseRatingData {
   course_id: string;
@@ -37,17 +39,46 @@ interface TeacherDashboardProps {
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
-  courseId = 'course-dev-001',
+  courseId: initialCourseId = 'course-dev-001',
   onBackToHome,
 }) => {
+  const { token } = useAuth();
+  const [activeCourseId, setActiveCourseId] = useState<string>(initialCourseId);
+  const [courses, setCourses] = useState<Array<{ id: string; title: string; subject: string }>>([]);
   const [analytics, setAnalytics] = useState<CourseAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthoringOpen, setIsAuthoringOpen] = useState(false);
+
+  // Fetch teacher's authored courses if authenticated
+  useEffect(() => {
+    const fetchTeacherCourses = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch('/api/v1/courses?mine=true', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setCourses(data);
+            setActiveCourseId(data[0].id);
+          }
+        }
+      } catch {
+        // Keep fallback
+      }
+    };
+    fetchTeacherCourses();
+  }, [token]);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/v1/courses/${courseId}/analytics`);
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/v1/courses/${activeCourseId}/analytics`, { headers });
         if (res.ok) {
           const data = await res.json();
           setAnalytics(data);
@@ -63,11 +94,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     };
 
     fetchAnalytics();
-  }, [courseId]);
+  }, [activeCourseId, token]);
 
   const generateFallbackAnalytics = () => {
     setAnalytics({
-      course_id: courseId,
+      course_id: activeCourseId,
       course_title: 'Natural Sciences: Cell Biology & Energy',
       enrolled_students: 8,
       completed_first_attempts: 6,
@@ -75,7 +106,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       total_reattempts: 7,
       struggling_students_count: 2,
       rating: {
-        course_id: courseId,
+        course_id: activeCourseId,
         rating_value: 4.3,
         computed_from_attempt_count: 6,
         min_required_attempts: 5,
@@ -153,13 +184,73 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       </div>
 
       <header style={{ marginBottom: 'var(--space-6)' }}>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 800, marginBottom: 'var(--space-2)' }}>
-          Educator Analytics & Course Ranking Dashboard
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem', lineHeight: '1.6' }}>
-          Real-time performance analytics, First-Attempt Star Rankings, and AI Teacher Co-Pilot insights.
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          <div>
+            <h1 style={{ fontSize: '1.875rem', fontWeight: 800, marginBottom: 'var(--space-2)' }}>
+              Educator Analytics & Course Ranking Dashboard
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem', lineHeight: '1.6' }}>
+              Real-time performance analytics, First-Attempt Star Rankings, and AI Teacher Co-Pilot insights.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => setIsAuthoringOpen(true)}
+            style={{ padding: '10px 18px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <span>➕</span> Author New Course with AI
+          </button>
+        </div>
+
+        {/* Course Switcher if multiple courses exist */}
+        {courses.length > 0 && (
+          <div style={{ marginTop: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <label htmlFor="course-selector" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              Active Course:
+            </label>
+            <select
+              id="course-selector"
+              value={activeCourseId}
+              onChange={(e) => setActiveCourseId(e.target.value)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-strong)',
+                backgroundColor: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+                fontSize: '0.9375rem',
+              }}
+            >
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title} ({c.subject})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </header>
+
+      {/* Course Authoring Modal */}
+      <CourseAuthoringModal
+        isOpen={isAuthoringOpen}
+        onClose={() => setIsAuthoringOpen(false)}
+        onCourseCreated={(newCourseId) => {
+          setActiveCourseId(newCourseId);
+          // Refetch course list
+          if (token) {
+            fetch('/api/v1/courses?mine=true', {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+              .then((res) => res.json())
+              .then((data) => {
+                if (Array.isArray(data)) setCourses(data);
+              })
+              .catch(() => {});
+          }
+        }}
+      />
 
       {loading && (
         <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-secondary)' }}>

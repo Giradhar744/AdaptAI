@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 
 interface QuestionOption {
   key: string;
@@ -23,6 +24,7 @@ interface DiagnosticResult {
 }
 
 export const StudentOnboarding: React.FC<{ onBackToHome: () => void }> = ({ onBackToHome }) => {
+  const { user, token: authContextToken, refreshProfile } = useAuth();
   const [step, setStep] = useState<'register' | 'diagnostic' | 'recommendation' | 'enrolled'>('register');
 
   // Registration state
@@ -31,7 +33,7 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void }> = ({ onBa
   const [displayName, setDisplayName] = useState('');
   const [age, setAge] = useState<number>(13);
   const [disabilityCode, setDisabilityCode] = useState('asd');
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(authContextToken);
 
   // Diagnostic state
   const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
@@ -41,6 +43,13 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void }> = ({ onBa
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Sync token from AuthContext if present
+  useEffect(() => {
+    if (authContextToken) {
+      setToken(authContextToken);
+    }
+  }, [authContextToken]);
 
   // 1. Submit Registration
   const handleRegister = async (e: React.FormEvent) => {
@@ -68,16 +77,19 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void }> = ({ onBa
       }
 
       const data = await res.json();
-      setToken(data.access_token);
+      const accessToken = data.access_token;
+      localStorage.setItem('adaptai_access_token', accessToken);
+      setToken(accessToken);
+      await refreshProfile();
 
       // Fetch user profile to get student_id
       const meRes = await fetch('/api/v1/auth/me', {
-        headers: { Authorization: `Bearer ${data.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       const meData = await meRes.json();
 
       // Start Diagnostic
-      await startDiagnostic(meData.student_id, data.access_token);
+      await startDiagnostic(meData.student_id, accessToken);
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -198,6 +210,35 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void }> = ({ onBa
           <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-6)' }}>
             Tell us about yourself so we can tailor the sensory pacing, reading load, and scaffolding depth.
           </p>
+
+          {user?.student_id && token && (
+            <div
+              style={{
+                backgroundColor: 'var(--color-info-bg)',
+                color: 'var(--color-info-text)',
+                border: '1px solid var(--color-info-border)',
+                padding: 'var(--space-4)',
+                borderRadius: 'var(--radius-md)',
+                marginBottom: 'var(--space-6)',
+              }}
+            >
+              <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)', fontSize: '0.9375rem' }}>
+                👋 Signed in as <strong>{user.display_name}</strong> ({user.email})
+              </p>
+              <p style={{ fontSize: '0.875rem', marginBottom: 'var(--space-3)' }}>
+                You can begin your adaptive placement diagnostic immediately with your account.
+              </p>
+              <button
+                type="button"
+                className="button-primary"
+                onClick={() => startDiagnostic(user.student_id!, token)}
+                disabled={loading}
+                style={{ padding: '8px 16px', fontSize: '0.9375rem' }}
+              >
+                {loading ? 'Starting Diagnostic...' : 'Launch Placement Diagnostic Now →'}
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div>

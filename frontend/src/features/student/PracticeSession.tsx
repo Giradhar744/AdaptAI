@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { BehaviourTracker, type StruggleAssessmentEvent } from '../../instrumentation/tracker';
 
 export interface PracticeQuestion {
@@ -80,11 +81,14 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
   topicTitle = 'Plant & Animal Cell Biology',
   chapterTitle = 'Cell Structure & Function',
   courseTitle = 'Middle School Science',
-  studentId = 'student-dev-001',
-  disabilityType = 'dyslexia',
+  studentId: initialStudentId = 'student-dev-001',
+  disabilityType: initialDisabilityType = 'dyslexia',
   sessionRef = 'session-practice-001',
   onBackToHome,
 }) => {
+  const { user } = useAuth();
+  const studentId = user?.student_id || initialStudentId;
+  const disabilityType = user?.disabilities?.[0]?.code || initialDisabilityType;
   const [questions] = useState<PracticeQuestion[]>(FALLBACK_QUESTIONS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
