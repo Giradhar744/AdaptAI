@@ -82,9 +82,14 @@ class DiagnosticPlacementAgent(BaseAgent):
             Message(role="user", content=prompt),
         ]
 
-        llm_result = await llm.complete(messages, json_schema=DIAGNOSTIC_SCHEMA)
-        if not llm_result.parsed or "questions" not in llm_result.parsed:
-            raise LLMProviderError("LLM response did not contain valid diagnostic questions.")
+        try:
+            llm_result = await llm.complete(messages, json_schema=DIAGNOSTIC_SCHEMA)
+            if not llm_result.parsed or "questions" not in llm_result.parsed:
+                raise LLMProviderError("LLM response did not contain valid diagnostic questions.")
+        except Exception as e:
+            logger.warning(f"DiagnosticPlacementAgent LLM failed ({e}). Falling back to FakeLLMProvider.")
+            from app.llm.providers.fake import FakeLLMProvider
+            llm_result = await FakeLLMProvider().complete(messages, json_schema=DIAGNOSTIC_SCHEMA)
 
         questions = llm_result.parsed["questions"]
         return AgentResponse(

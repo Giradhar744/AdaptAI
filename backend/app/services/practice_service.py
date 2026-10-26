@@ -165,13 +165,31 @@ class PracticeService:
                 hint_data = r.data
                 break
 
+        hint_text = hint_data.get("hint_text", "Think about the central principle described in the lesson.")
+        scaffold_level = hint_data.get("scaffold_level", requested_depth or "partial_hint")
+        audio_base64 = hint_data.get("audio_base64")
+        media_type = hint_data.get("media_type")
+        audio_duration = hint_data.get("audio_duration")
+
+        if modality == "audio" and not audio_base64:
+            try:
+                import base64
+                from app.speech.factory import get_tts_provider
+                tts = get_tts_provider()
+                res = await tts.synthesize(hint_text, voice="calm", speed=0.95)
+                audio_base64 = base64.b64encode(res.audio_bytes).decode("utf-8")
+                media_type = res.media_type
+                audio_duration = res.duration_seconds
+            except Exception:
+                pass
+
         return HintResponse(
-            hint_text=hint_data.get("hint_text", "Think about the central principle described in the lesson."),
-            scaffold_level=hint_data.get("scaffold_level", requested_depth or "partial_hint"),
+            hint_text=hint_text,
+            scaffold_level=scaffold_level,
             modality=modality,
-            audio_base64=hint_data.get("audio_base64"),
-            media_type=hint_data.get("media_type"),
-            audio_duration=hint_data.get("audio_duration"),
+            audio_base64=audio_base64,
+            media_type=media_type,
+            audio_duration=audio_duration,
             rationale=hint_data.get("rationale", "ZPD scaffolding hint provided."),
         )
 

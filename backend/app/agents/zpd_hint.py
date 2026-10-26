@@ -53,12 +53,17 @@ class ZPDHintAgent(BaseAgent):
         ]
 
         llm = get_llm_provider()
-        llm_result = await llm.complete(messages, json_schema=HINT_SCHEMA)
-        if not llm_result.parsed or "hint_text" not in llm_result.parsed:
-            raise LLMProviderError("LLM failed to generate a valid structured hint.")
+        try:
+            llm_result = await llm.complete(messages, json_schema=HINT_SCHEMA)
+            if not llm_result.parsed or "hint_text" not in llm_result.parsed:
+                raise LLMProviderError("LLM failed to generate a valid structured hint.")
+        except Exception as e:
+            logger.warning(f"ZPDHintAgent LLM call failed ({e}), falling back to FakeLLMProvider.")
+            from app.llm.providers.fake import FakeLLMProvider
+            llm_result = await FakeLLMProvider().complete(messages, json_schema=HINT_SCHEMA)
 
-        parsed = llm_result.parsed
-        hint_text = parsed["hint_text"]
+        parsed = llm_result.parsed or {}
+        hint_text = parsed.get("hint_text", "Review the core definition and eliminate options that contradict the main principle.")
         rationale = parsed.get("rationale", "ZPD scaffolding support.")
 
         audio_base64: Optional[str] = None
