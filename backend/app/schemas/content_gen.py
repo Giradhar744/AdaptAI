@@ -24,7 +24,8 @@ class QuestionSchema(BaseModel):
 
 class DPPResponse(BaseModel):
     id: str
-    topic_id: str
+    topic_id: Optional[str] = None
+    lecture_id: Optional[str] = None
     generated_by: str
     status: str
     questions_count: int
@@ -42,3 +43,19 @@ class ChapterTestResponse(BaseModel):
 
 class StatusUpdateRequest(BaseModel):
     status: str = Field(pattern="^(draft|published)$")
+
+
+class QuestionUpdateRequest(BaseModel):
+    prompt: Optional[str] = Field(default=None, min_length=5)
+    options: Optional[List[QuestionOption]] = None
+    correct_answer: Optional[CorrectAnswer] = None
+    explanation: Optional[str] = None
+    difficulty: Optional[str] = None
+
+
+class QuestionCreateRequest(BaseModel):
+    prompt: str = Field(min_length=5)
+    options: List[QuestionOption]
+    correct_answer: CorrectAnswer
+    explanation: Optional[str] = None
+    difficulty: Optional[str] = "medium"

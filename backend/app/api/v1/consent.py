@@ -12,6 +12,7 @@ from app.schemas.consent import (
     TrustProfileResponse,
     StudentPreferenceResponse,
     RevokePreferenceRequest,
+    CreateProposalRequest,
 )
 from app.services.consent_service import ConsentService
 
@@ -93,3 +94,24 @@ async def get_student_trust_profile(
 ):
     """Retrieves cooperation metrics, acceptance rates, and nagging reduction factor for a student profile."""
     return await ConsentService.get_trust_profile(session=session, current_user=current_user, student_id=id)
+
+
+@router.post("/students/{id}/consent/propose", response_model=PendingProposalResponse, status_code=status.HTTP_201_CREATED)
+async def propose_adaptation(
+    id: str,
+    req: CreateProposalRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Generates a new pending adaptation proposal in the append-only Consent Ledger."""
+    return await ConsentService.create_proposal(
+        session=session,
+        current_user=current_user,
+        student_id=id,
+        proposal_type=req.proposal_type,
+        payload=req.payload,
+        agent=req.proposed_by_agent,
+        priority_class=req.priority_class,
+        rationale=req.rationale or "Pedagogical adaptation proposal",
+    )
+

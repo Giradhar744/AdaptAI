@@ -35,14 +35,23 @@ def get_normalized_database_url_and_args(raw_url: str) -> Tuple[str, Dict[str, A
 
 db_url, connect_args = get_normalized_database_url_and_args(settings.DATABASE_URL)
 
-# Create asynchronous engine with connection pre-ping for cloud resiliency
-engine = create_async_engine(
-    db_url,
-    connect_args=connect_args,
-    echo=False,
-    future=True,
-    pool_pre_ping=True,  # Automatically tests connection validity before use
-)
+# Create asynchronous engine with connection pooling for cloud resiliency
+engine_kwargs: Dict[str, Any] = {
+    "connect_args": connect_args,
+    "echo": False,
+    "future": True,
+}
+
+if "sqlite" not in db_url:
+    engine_kwargs.update({
+        "pool_size": 15,
+        "max_overflow": 25,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+        "pool_pre_ping": False,
+    })
+
+engine = create_async_engine(db_url, **engine_kwargs)
 
 # Async session factory
 AsyncSessionLocal = async_sessionmaker(

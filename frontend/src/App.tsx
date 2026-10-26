@@ -5,7 +5,11 @@ import StudentOnboarding from './features/student/StudentOnboarding';
 import PracticeSession from './features/student/PracticeSession';
 import ConsentDecisionCenter from './features/student/ConsentDecisionCenter';
 import TimedChapterTest from './features/student/TimedChapterTest';
+import StudentDashboard from './features/student/StudentDashboard';
+import CourseStudyRoom from './features/student/CourseStudyRoom';
 import TeacherDashboard from './features/teacher/TeacherDashboard';
+import { TeacherCoursesManager } from './features/teacher/TeacherCoursesManager';
+import { CourseAuthoringModal } from './features/teacher/CourseAuthoringModal';
 import heroImg from './assets/hero.png';
 
 interface HealthData {
@@ -16,8 +20,27 @@ interface HealthData {
   agents: Record<string, boolean>;
 }
 
+export type AppView =
+  | 'home'
+  | 'student_onboarding'
+  | 'practice_session'
+  | 'consent_center'
+  | 'chapter_test'
+  | 'teacher_dashboard'
+  | 'course_room';
+
+const VALID_VIEWS: AppView[] = [
+  'home',
+  'student_onboarding',
+  'practice_session',
+  'consent_center',
+  'chapter_test',
+  'teacher_dashboard',
+  'course_room',
+];
+
 const AppContent: React.FC = () => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
 
   const [dyslexicFont, setDyslexicFont] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
@@ -25,17 +48,76 @@ const AppContent: React.FC = () => {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Active study context
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
+  const [activeDppId, setActiveDppId] = useState<string | null>(null);
+  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
+  const [activeChapterTitle, setActiveChapterTitle] = useState<string | null>(null);
+  const [activeCourseTitle, setActiveCourseTitle] = useState<string | null>(null);
+  const [activeTestId, setActiveTestId] = useState<string | null>(null);
+  const [isTeacherAuthoringOpen, setIsTeacherAuthoringOpen] = useState(false);
+
   // Auth modal state
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authDefaultMode, setAuthDefaultMode] = useState<'login' | 'register'>('login');
   const [authDefaultRole, setAuthDefaultRole] = useState<'student' | 'teacher'>('student');
 
-  const [activeView, setActiveView] = useState<
-    'home' | 'student_onboarding' | 'practice_session' | 'consent_center' | 'chapter_test' | 'teacher_dashboard'
-  >('home');
+  const getInitialView = (): AppView => {
+    const hash = window.location.hash.replace(/^#\/?/, '').trim();
+    if (VALID_VIEWS.includes(hash as AppView)) {
+      return hash as AppView;
+    }
+    const saved = sessionStorage.getItem('adaptai_active_view');
+    if (saved && VALID_VIEWS.includes(saved as AppView)) {
+      return saved as AppView;
+    }
+    return 'home';
+  };
+
+  const [activeView, setActiveView] = useState<AppView>(getInitialView);
+
+  // Sync state when browser Back or Forward button is clicked
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '').trim();
+      const nextView: AppView = VALID_VIEWS.includes(hash as AppView) ? (hash as AppView) : 'home';
+      setActiveView(nextView);
+      sessionStorage.setItem('adaptai_active_view', nextView);
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const navigateTo = (view: AppView, replace = false) => {
+    sessionStorage.setItem('adaptai_active_view', view);
+    setActiveView(view);
+    const targetHash = view === 'home' ? '' : `#${view}`;
+    const currentHash = window.location.hash;
+    if (currentHash !== targetHash && (currentHash !== '' || targetHash !== '')) {
+      if (replace) {
+        window.location.replace(targetHash || window.location.pathname);
+      } else {
+        window.location.hash = targetHash;
+      }
+    }
+  };
+
+  const handleBack = () => {
+    if (window.history.length > 1 && window.location.hash && window.location.hash !== '#home' && window.location.hash !== '#') {
+      window.history.back();
+    } else {
+      navigateTo('home');
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigateTo('home', true);
+  };
 
   useEffect(() => {
-    // Apply font settings to document
+    // Apply accessibility settings to document body
     if (dyslexicFont) {
       document.body.classList.add('font-dyslexic');
     } else {
@@ -67,7 +149,7 @@ const AppContent: React.FC = () => {
           status: 'ready (dev)',
           environment: 'development',
           version: '0.1.0',
-          providers: { llm: 'fake', tts: 'fake', stt: 'fake', video: 'fake' },
+          providers: { llm: 'fast', tts: 'browser-speech', stt: 'browser-stt', video: 'direct' },
           agents: {
             diagnostic: true,
             zpd_hint: true,
@@ -90,7 +172,7 @@ const AppContent: React.FC = () => {
   return (
     <div>
       {/* Top Accessibility Bar */}
-      <nav aria-label="Accessibility settings" className="a11y-toolbar">
+      <nav aria-label="Accessibility options" className="a11y-toolbar">
         <div>
           <span>Accessibility Options:</span>
         </div>
@@ -149,10 +231,10 @@ const AppContent: React.FC = () => {
           <div
             className="brand-title"
             style={{ cursor: 'pointer' }}
-            onClick={() => setActiveView('home')}
+            onClick={() => navigateTo('home')}
           >
             <span>AdaptAI</span>
-            <span className="brand-badge">Phase III</span>
+            <span className="brand-badge">Learning Hub</span>
           </div>
 
           <div className="nav-actions">
@@ -171,7 +253,7 @@ const AppContent: React.FC = () => {
                 <button
                   type="button"
                   className="btn-a11y"
-                  onClick={logout}
+                  onClick={handleLogout}
                   style={{ color: 'var(--color-danger-text)' }}
                 >
                   Sign Out
@@ -200,17 +282,97 @@ const AppContent: React.FC = () => {
           </div>
         </header>
 
+        {/* Breadcrumb & Quick Back Navigation for sub-views */}
+        {activeView !== 'home' && (
+          <nav
+            aria-label="Breadcrumb navigation"
+            style={{
+              marginBottom: 'var(--space-4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <button
+              type="button"
+              className="btn-a11y"
+              onClick={handleBack}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+              }}
+            >
+              <span aria-hidden="true">←</span> Back to Dashboard
+            </button>
+            <span style={{ color: 'var(--text-secondary)' }}>/</span>
+            <span
+              style={{
+                fontSize: '0.875rem',
+                color: 'var(--text-secondary)',
+                textTransform: 'capitalize',
+              }}
+            >
+              {activeView.replace(/_/g, ' ')}
+            </span>
+          </nav>
+        )}
+
         {/* View Routing */}
-        {activeView === 'student_onboarding' ? (
-          <StudentOnboarding onBackToHome={() => setActiveView('home')} />
+        {isLoading && !user ? (
+          <div style={{ textAlign: 'center', padding: 'var(--space-12) var(--space-4)' }}>
+            <div className="brand-badge" style={{ display: 'inline-block', marginBottom: 'var(--space-3)' }}>
+              Restoring Session...
+            </div>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Connecting securely to your AdaptAI learning space...
+            </p>
+          </div>
+        ) : activeView === 'student_onboarding' ? (
+          <StudentOnboarding onBackToHome={handleBack} />
         ) : activeView === 'practice_session' ? (
-          <PracticeSession onBackToHome={() => setActiveView('home')} />
+          <PracticeSession
+            dppId={activeDppId || undefined}
+            chapterId={activeChapterId || undefined}
+            chapterTitle={activeChapterTitle || undefined}
+            courseTitle={activeCourseTitle || undefined}
+            studentId={user?.student_id || undefined}
+            disabilityType={user?.disabilities?.[0]?.code || 'dyslexia'}
+            onBackToHome={handleBack}
+          />
         ) : activeView === 'consent_center' ? (
-          <ConsentDecisionCenter onBackToHome={() => setActiveView('home')} />
+          <ConsentDecisionCenter onBackToHome={handleBack} />
         ) : activeView === 'chapter_test' ? (
-          <TimedChapterTest onBackToHome={() => setActiveView('home')} />
+          <TimedChapterTest
+            testId={activeTestId || undefined}
+            chapterTitle={activeChapterTitle || undefined}
+            courseTitle={activeCourseTitle || undefined}
+            studentId={user?.student_id || undefined}
+            onBackToHome={handleBack}
+          />
+        ) : activeView === 'course_room' && activeCourseId ? (
+          <CourseStudyRoom
+            courseId={activeCourseId}
+            onBackToCourses={() => navigateTo('home')}
+            onLaunchPractice={(dppId, chapterId, chapterTitle, courseTitle) => {
+              setActiveDppId(dppId || null);
+              setActiveChapterId(chapterId || null);
+              setActiveChapterTitle(chapterTitle || null);
+              setActiveCourseTitle(courseTitle || null);
+              navigateTo('practice_session');
+            }}
+            onLaunchTest={(testId, chapterTitle, courseTitle) => {
+              setActiveTestId(testId || null);
+              setActiveChapterTitle(chapterTitle || null);
+              setActiveCourseTitle(courseTitle || null);
+              navigateTo('chapter_test');
+            }}
+          />
         ) : activeView === 'teacher_dashboard' ? (
-          <TeacherDashboard onBackToHome={() => setActiveView('home')} />
+          <TeacherDashboard courseId={activeCourseId || undefined} onBackToHome={handleBack} />
         ) : isAuthenticated && user ? (
           /* ================================================================
              AUTHENTICATED ROLE DASHBOARD HUB (When Logged In)
@@ -220,184 +382,111 @@ const AppContent: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
                 <div>
                   <span className="hero-badge">
-                    {user.role === 'teacher' ? '👩‍🏫 Educator Workspace' : '🎓 Student Learning Workspace'}
+                    {user.role === 'teacher' ? '👩‍🏫 Teacher Workspace' : '🎓 Student Learning Workspace'}
                   </span>
                   <h1 style={{ fontSize: '2rem', fontWeight: 800, marginTop: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                     Welcome back, {user.display_name}!
                   </h1>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', maxWidth: '640px' }}>
                     {user.role === 'teacher'
-                      ? 'Author disability-inclusive curricula, inspect first-attempt course star rankings, and generate AI daily practice problems and chapter tests.'
-                      : 'Your personalized learning space with calm pacing, multimodal hints, and transparent consent-first adaptation.'}
+                      ? 'Create courses, view student test progress, and use AI to generate practice questions and chapter tests.'
+                      : 'Your friendly learning space with calm pacing, helpful speech hints, and courses picked just for you.'}
                   </p>
                 </div>
 
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                   {user.age && <span className="btn-a11y">Age: {user.age}</span>}
-                  {user.age_band && <span className="btn-a11y">Age Band: {user.age_band}</span>}
+                  {user.age_band && <span className="btn-a11y">Age Group: {user.age_band}</span>}
                   {user.disabilities && user.disabilities.length > 0 && (
                     <span className="brand-badge" style={{ padding: '6px 12px' }}>
-                      Profile: {user.disabilities[0].label}
+                      Learning Style: {user.disabilities[0].label}
                     </span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Role-Specific Action Grid */}
+            {/* Role-Specific Views */}
             {user.role === 'teacher' ? (
-              /* TEACHER ACTIONS */
+              /* TEACHER DASHBOARD HUB */
               <div>
                 <h2 style={{ fontSize: '1.375rem', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
-                  Educator Management Tools
+                  Teaching & Course Management Tools
                 </h2>
-                <div className="dashboard-action-grid">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
                   <div className="dashboard-action-card">
                     <div>
                       <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                        📊 Course Analytics & Ratings
+                        📊 Student Analytics & Course Ratings
                       </h3>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                        View live class engagement, struggle detection alerts, and official 5-star course quality ratings computed strictly on students' first attempts.
+                        See student scores, identify anyone needing extra support, and view 5-star course quality ratings based on students' first test attempts.
                       </p>
                     </div>
                     <button
                       type="button"
                       className="button-primary"
-                      onClick={() => setActiveView('teacher_dashboard')}
+                      onClick={() => navigateTo('teacher_dashboard')}
                     >
-                      Open Educator Dashboard →
+                      Open Teacher Dashboard →
                     </button>
                   </div>
 
                   <div className="dashboard-action-card">
                     <div>
                       <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                        ➕ Author Course & AI Studio
+                        ➕ Create Course & AI Studio
                       </h3>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                        Create new courses, add chapters, and use the AI co-pilot to generate aligned Daily Practice Problems (DPP) and chapter tests.
+                        Create structured courses with chapters and lesson videos. Use the AI generator to create aligned 4-choice practice questions and chapter tests.
                       </p>
                     </div>
                     <button
                       type="button"
                       className="button-secondary"
-                      onClick={() => setActiveView('teacher_dashboard')}
+                      onClick={() => setIsTeacherAuthoringOpen(true)}
                     >
-                      Launch Course Studio →
+                      Create New Course →
                     </button>
                   </div>
-
-                  <div className="dashboard-action-card">
-                    <div>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                        🧪 Student Experience Preview
-                      </h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                        Preview how your DPP questions, ZPD scaffolding, and timed chapter tests appear from a student's perspective.
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                      <button
-                        type="button"
-                        className="button-secondary"
-                        onClick={() => setActiveView('practice_session')}
-                        style={{ flex: 1, padding: '8px' }}
-                      >
-                        Preview DPP
-                      </button>
-                      <button
-                        type="button"
-                        className="button-secondary"
-                        onClick={() => setActiveView('chapter_test')}
-                        style={{ flex: 1, padding: '8px' }}
-                      >
-                        Preview Test
-                      </button>
-                    </div>
-                  </div>
                 </div>
+
+                {/* All Courses & Subject Management Section */}
+                <TeacherCoursesManager
+                  onLaunchPractice={(dppId, chapterId, chapterTitle, courseTitle) => {
+                    setActiveDppId(dppId || null);
+                    setActiveChapterId(chapterId || null);
+                    setActiveChapterTitle(chapterTitle || null);
+                    setActiveCourseTitle(courseTitle || null);
+                    navigateTo('practice_session');
+                  }}
+                  onOpenCreateCourse={() => setIsTeacherAuthoringOpen(true)}
+                  onOpenAnalytics={(courseId) => {
+                    setActiveCourseId(courseId);
+                    navigateTo('teacher_dashboard');
+                  }}
+                />
+
+                {/* Course Authoring Modal */}
+                <CourseAuthoringModal
+                  isOpen={isTeacherAuthoringOpen}
+                  onClose={() => setIsTeacherAuthoringOpen(false)}
+                  onCourseCreated={(newCourseId) => {
+                    setActiveCourseId(newCourseId);
+                    setIsTeacherAuthoringOpen(false);
+                  }}
+                />
               </div>
             ) : (
-              /* STUDENT ACTIONS */
-              <div>
-                <h2 style={{ fontSize: '1.375rem', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
-                  Your Learning Journey
-                </h2>
-                <div className="dashboard-action-grid">
-                  <div className="dashboard-action-card">
-                    <div>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                        🎯 Placement Diagnostic
-                      </h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                        Take or retake your adaptive placement test to calibrate your ZPD level and get personalized curriculum recommendations.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="button-primary"
-                      onClick={() => setActiveView('student_onboarding')}
-                    >
-                      Launch Diagnostic →
-                    </button>
-                  </div>
-
-                  <div className="dashboard-action-card">
-                    <div>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                        📚 Interactive Practice & Hints
-                      </h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                        Solve Daily Practice Problems (DPP) with real-time text and audio scaffolding, calm pacing, and zero sensory overload.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="button-primary"
-                      onClick={() => setActiveView('practice_session')}
-                    >
-                      Start Practice Session →
-                    </button>
-                  </div>
-
-                  <div className="dashboard-action-card">
-                    <div>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                        ⏱️ Timed Chapter Test
-                      </h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                        Complete chapter assessments. Attempt 1 is used for official teacher rating; subsequent attempts are for mastery learning.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      onClick={() => setActiveView('chapter_test')}
-                    >
-                      Take Chapter Test →
-                    </button>
-                  </div>
-
-                  <div className="dashboard-action-card">
-                    <div>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                        🛡️ Consent & Adaptation Center
-                      </h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                        Inspect, accept, or decline proposed learning accommodations in your transparent, immutable consent ledger.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      onClick={() => setActiveView('consent_center')}
-                    >
-                      Open Consent Ledger →
-                    </button>
-                  </div>
-                </div>
-              </div>
+              /* STUDENT DASHBOARD: Explore Courses, My Courses, My Profile */
+              <StudentDashboard
+                onEnterCourse={(courseId) => {
+                  setActiveCourseId(courseId);
+                  navigateTo('course_room');
+                }}
+                onLaunchDiagnostic={() => navigateTo('student_onboarding')}
+                onOpenConsentCenter={() => navigateTo('consent_center')}
+              />
             )}
           </div>
         ) : (
@@ -409,13 +498,13 @@ const AppContent: React.FC = () => {
             <section className="hero-section" aria-label="Introduction">
               <div>
                 <div className="hero-badge">
-                  <span>✨</span> Neurodiversity-First Digital Learning Platform
+                  <span>✨</span> Thoughtful AI-Powered Learning for Every Learner
                 </div>
                 <h1 style={{ fontSize: '2.375rem', fontWeight: 800, lineHeight: 1.25, marginBottom: 'var(--space-4)', color: 'var(--text-primary)' }}>
                   Personalized, AI-Powered Learning Designed for Every Learner's Needs
                 </h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '1.125rem', lineHeight: 1.6, marginBottom: 'var(--space-6)', maxWidth: '640px' }}>
-                  AdaptAI bridges the gap between static IEPs and dynamic digital classrooms. Engineered specifically for students with Autism Spectrum Disorder (ASD), ADHD, Dyslexia, and developmental learning differences.
+                  AdaptAI gives students a calm, friendly place to learn with courses created by real teachers. Specially designed for learners with Dyslexia, ADHD, Autism, and unique learning paces.
                 </p>
 
                 <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
@@ -434,15 +523,15 @@ const AppContent: React.FC = () => {
                     onClick={() => openAuth('login', 'teacher')}
                     style={{ padding: '12px 24px', fontSize: '1rem' }}
                   >
-                    👩‍🏫 Educator Portal Sign In →
+                    👩‍🏫 Teacher Sign In →
                   </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                  <span className="btn-a11y">✓ Autism (ASD) Sensory Calm</span>
-                  <span className="btn-a11y">✓ ADHD Adaptive Pacing</span>
-                  <span className="btn-a11y">✓ Dyslexia Typography & Speech</span>
-                  <span className="btn-a11y">✓ Immutable Consent Ledger</span>
+                  <span className="btn-a11y">✓ Calm, Sensory-Friendly Colors</span>
+                  <span className="btn-a11y">✓ Spoken Audio & Text Hints</span>
+                  <span className="btn-a11y">✓ Dyslexia-Friendly Fonts</span>
+                  <span className="btn-a11y">✓ Clear Privacy & Control</span>
                 </div>
               </div>
 
@@ -459,9 +548,9 @@ const AppContent: React.FC = () => {
             <section className="section-container">
               <div className="section-header">
                 <span className="brand-badge">Our Mission</span>
-                <h2 className="section-title">What is AdaptAI?</h2>
+                <h2 className="section-title">What Makes AdaptAI Different?</h2>
                 <p className="section-subtitle">
-                  Mainstream ed-tech creates rigid, one-size-fits-all digital environments that often cause cognitive overload for neurodivergent learners. AdaptAI is a two-sided platform that unites educator-authored curricula with real-time, disability-aware learning adaptations governed by three core principles:
+                  Traditional learning websites can feel overwhelming and fast-paced. AdaptAI provides calm pacing, clear choices, and helpful hints designed to help every learner succeed:
                 </p>
               </div>
 
@@ -469,30 +558,30 @@ const AppContent: React.FC = () => {
                 <div className="card">
                   <div style={{ fontSize: '1.75rem', marginBottom: 'var(--space-2)' }}>🛡️</div>
                   <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                    1. Consent-First Adaptation
+                    1. You Are Always in Control
                   </h3>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                    No pedagogical shift, difficulty alteration, or modality change occurs without explicit student or parent approval. All decisions are immutably logged in a transparent Consent Ledger.
+                    No sudden surprises. We never change your learning pace, font, or hints without your clear approval. You and your parents can review every accommodation anytime.
                   </p>
                 </div>
 
                 <div className="card">
                   <div style={{ fontSize: '1.75rem', marginBottom: 'var(--space-2)' }}>🪜</div>
                   <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                    2. ZPD-Based Scaffolding
+                    2. Step-by-Step Learning
                   </h3>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                    Grounded in Vygotsky's Zone of Proximal Development. Guidance gently moves from worked examples to partial conceptual hints to independent practice, preventing premature failure.
+                    Instead of feeling stuck on difficult problems, the app gives you gentle hints—first simple clues, then worked examples, so you build real confidence.
                   </p>
                 </div>
 
                 <div className="card">
                   <div style={{ fontSize: '1.75rem', marginBottom: 'var(--space-2)' }}>⚡</div>
                   <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                    3. Proactive Struggle Detection
+                    3. Helpful Hints in Audio & Text
                   </h3>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                    Telemetry monitors dwell latency, option hesitation, and answer flipping to predict struggle early. Calm micro-interventions are offered before frustration or sensory overload sets in.
+                    Listen to hints read aloud with natural speech, or read simplified bullet points. Designed to prevent reading fatigue and help you focus on learning.
                   </p>
                 </div>
               </div>
@@ -501,55 +590,55 @@ const AppContent: React.FC = () => {
             {/* 3. How It Works (4-Step Workflow) */}
             <section className="section-container">
               <div className="section-header">
-                <span className="brand-badge">Workflow</span>
+                <span className="brand-badge">Easy Workflow</span>
                 <h2 className="section-title">How AdaptAI Works</h2>
                 <p className="section-subtitle">
-                  From initial onboarding to master tests, AdaptAI guides learners and educators through a continuous, adaptive cycle.
+                  Simple, straightforward steps from finding a course to mastering new skills.
                 </p>
               </div>
 
               <div className="steps-grid">
                 <div className="step-card">
                   <div className="step-number">1</div>
-                  <h3>Learning Profile & Diagnostic</h3>
+                  <h3>Quick Placement Test</h3>
                   <p>
-                    Students declare their primary learning profile (ASD, ADHD, Dyslexia) and complete an age-appropriate diagnostic to determine optimal placement.
+                    Take a fun, 5-question placement check so we can recommend courses and lessons suited to your exact level.
                   </p>
                 </div>
 
                 <div className="step-card">
                   <div className="step-number">2</div>
-                  <h3>Daily Practice (DPP) with AI Hints</h3>
+                  <h3>Watch Video Lessons</h3>
                   <p>
-                    Students practice daily problems with disability-aware hints available as simplified text or spoken audio narration to avoid reading fatigue.
+                    Watch bite-sized lesson videos recorded by teachers and mark each lesson done when you are ready.
                   </p>
                 </div>
 
                 <div className="step-card">
                   <div className="step-number">3</div>
-                  <h3>Server-Timed Chapter Tests</h3>
+                  <h3>Daily Practice with Audio Hints</h3>
                   <p>
-                    Students take timed tests. Attempt 1 is used for official teacher evaluation; subsequent attempts are encouraged for mastery learning.
+                    Solve 3-choice practice questions with instant spoken audio clues and clear explanations whenever you need assistance.
                   </p>
                 </div>
 
                 <div className="step-card">
                   <div className="step-number">4</div>
-                  <h3>Consent & Teacher Analytics</h3>
+                  <h3>Show Your Mastery</h3>
                   <p>
-                    Proposed accommodations are reviewed by the learner, while educators inspect class mastery analytics and first-attempt star rankings.
+                    Take chapter tests to celebrate how much you've learned. Retake practice anytime to improve your score!
                   </p>
                 </div>
               </div>
             </section>
 
-            {/* 4. For Whom? (Dedicated Portals) */}
+            {/* 4. For Whom? */}
             <section className="section-container">
               <div className="section-header">
-                <span className="brand-badge">Tailored Support</span>
-                <h2 className="section-title">Who is AdaptAI Built For?</h2>
+                <span className="brand-badge">Made For You</span>
+                <h2 className="section-title">Built for Learners and Teachers</h2>
                 <p className="section-subtitle">
-                  A dual-sided ecosystem engineered for specially-abled learners and dedicated educators.
+                  A dual space designed for specially-abled students and dedicated educators.
                 </p>
               </div>
 
@@ -561,34 +650,34 @@ const AppContent: React.FC = () => {
                     <h3>For Students & Parents</h3>
                   </div>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                    A stress-free digital study environment with accommodations customized to how your brain learns best.
+                    A stress-free study space with accommodations that match how your brain learns best.
                   </p>
 
                   <div className="audience-item">
                     <span className="audience-icon">🧩</span>
                     <div>
-                      <strong>Autism Spectrum (ASD):</strong> Predictable UI patterns, sensory-gentle palettes, and proactive calm breaks.
+                      <strong>Autism (ASD):</strong> Calming colors, predictable screens, and relaxing focus breaks.
                     </div>
                   </div>
 
                   <div className="audience-item">
                     <span className="audience-icon">⚡</span>
                     <div>
-                      <strong>ADHD:</strong> Structured chunking, micro-milestones, and gentle focus nudges without distracting banners.
+                      <strong>ADHD:</strong> Short lessons, clear steps, and gentle encouragement without distracting popups.
                     </div>
                   </div>
 
                   <div className="audience-item">
                     <span className="audience-icon">📖</span>
                     <div>
-                      <strong>Dyslexia:</strong> High-legibility Lexend typography, letter-spacing adjustments, and spoken audio hints.
+                      <strong>Dyslexia:</strong> High-legibility dyslexia fonts, generous line spacing, and spoken audio hints.
                     </div>
                   </div>
 
                   <div className="audience-item">
                     <span className="audience-icon">🛡️</span>
                     <div>
-                      <strong>Consent Control:</strong> Students and parents have complete oversight over all AI adaptations.
+                      <strong>Clear Privacy:</strong> Full control over all learning aids and settings.
                     </div>
                   </div>
                 </div>
@@ -600,34 +689,34 @@ const AppContent: React.FC = () => {
                     <h3>For Teachers & Educators</h3>
                   </div>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                    Empowering teachers with scalable course authoring, generative AI assistance, and transparent learning analytics.
+                    Empowering teachers with easy course creation, AI-assisted practice problems, and clear student progress.
                   </p>
 
                   <div className="audience-item">
                     <span className="audience-icon">📚</span>
                     <div>
-                      <strong>Curriculum Studio:</strong> Author structured courses by subject and age bands (7–10, 11–15, 15–20).
+                      <strong>Course Studio:</strong> Create structured courses organized by age groups (7–10, 11–15, 15–20).
                     </div>
                   </div>
 
                   <div className="audience-item">
                     <span className="audience-icon">✨</span>
                     <div>
-                      <strong>AI Co-Pilot Generator:</strong> Automatically generate aligned DPPs and chapter tests from concept prompts.
+                      <strong>AI Question Generator:</strong> Automatically create 3-choice practice questions and tests from concept notes.
                     </div>
                   </div>
 
                   <div className="audience-item">
                     <span className="audience-icon">★</span>
                     <div>
-                      <strong>First-Attempt 5-Star Ratings:</strong> Course quality ratings computed strictly on students' first test attempts.
+                      <strong>5-Star Course Ratings:</strong> Transparent ratings based fairly on students' first test attempts.
                     </div>
                   </div>
 
                   <div className="audience-item">
                     <span className="audience-icon">📊</span>
                     <div>
-                      <strong>Cognitive Struggle Alerts:</strong> Identify which students are struggling with specific concepts in real time.
+                      <strong>Student Support Alerts:</strong> Quickly see which students might need a little extra one-on-one help.
                     </div>
                   </div>
                 </div>
@@ -639,10 +728,10 @@ const AppContent: React.FC = () => {
               <div style={{ textAlign: 'center', maxWidth: '640px', margin: '0 auto' }}>
                 <span className="brand-badge">Get Started</span>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
-                  Ready to Experience AdaptAI?
+                  Ready to Start Learning?
                 </h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
-                  Choose your portal below to sign in or create an account in seconds.
+                  Choose your portal below to sign in or create your account in seconds.
                 </p>
               </div>
 
@@ -652,10 +741,10 @@ const AppContent: React.FC = () => {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
                       <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>🎓 Student & Parent Portal</h3>
-                      <span className="brand-badge">Learners</span>
+                      <span className="brand-badge">Students</span>
                     </div>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                      Access your placement diagnostic, daily practice problems, spoken audio hints, and consent ledger.
+                      Access your placement test, enrolled courses, daily practice with spoken hints, and profile.
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -665,7 +754,7 @@ const AppContent: React.FC = () => {
                       onClick={() => openAuth('login', 'student')}
                       style={{ flex: 1, padding: '10px' }}
                     >
-                      Sign In →
+                      Student Sign In →
                     </button>
                     <button
                       type="button"
@@ -682,13 +771,13 @@ const AppContent: React.FC = () => {
                 <div className="auth-access-card">
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
-                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>👩‍🏫 Educator Studio</h3>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>👩‍🏫 Teacher Workspace</h3>
                       <span className="brand-badge" style={{ background: '#e0e7ff', color: '#4338ca' }}>
                         Teachers
                       </span>
                     </div>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                      Manage curriculum courses, generate AI daily practice problems, and inspect class mastery analytics.
+                      Manage your courses, generate AI daily practice problems, and see how your students are doing.
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -706,7 +795,7 @@ const AppContent: React.FC = () => {
                       onClick={() => openAuth('register', 'teacher')}
                       style={{ flex: 1, padding: '10px' }}
                     >
-                      New Educator? Register
+                      New Teacher? Register
                     </button>
                   </div>
                 </div>
@@ -717,7 +806,7 @@ const AppContent: React.FC = () => {
                 <span>Testing without an account? </span>
                 <button
                   type="button"
-                  onClick={() => setActiveView('practice_session')}
+                  onClick={() => navigateTo('practice_session')}
                   style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
                 >
                   Preview Practice Mode
@@ -725,32 +814,11 @@ const AppContent: React.FC = () => {
                 <span> · </span>
                 <button
                   type="button"
-                  onClick={() => setActiveView('teacher_dashboard')}
+                  onClick={() => navigateTo('teacher_dashboard')}
                   style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
                 >
                   Preview Teacher Analytics
                 </button>
-              </div>
-            </section>
-
-            {/* 6. Architectural Guarantees & Active Providers */}
-            <section className="card" style={{ marginTop: 'var(--space-8)' }}>
-              <h3 style={{ fontSize: '1.125rem', marginBottom: 'var(--space-4)', color: 'var(--text-primary)' }}>
-                Architectural Guarantees & Active Provider Seams
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)', fontSize: '0.875rem' }}>
-                <div>
-                  <strong>LLM Provider:</strong> {health?.providers?.llm || 'fake'}
-                </div>
-                <div>
-                  <strong>Speech Modality (TTS/STT):</strong> {health?.providers?.tts || 'fake'} / {health?.providers?.stt || 'fake'}
-                </div>
-                <div>
-                  <strong>Video Store:</strong> {health?.providers?.video || 'fake'}
-                </div>
-                <div>
-                  <strong>Priority Engine Order:</strong> Safety &gt; Consent &gt; Pedagogy &gt; Nudges
-                </div>
               </div>
             </section>
           </>

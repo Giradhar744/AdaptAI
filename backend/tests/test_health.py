@@ -12,6 +12,6 @@ async def test_health_endpoint():
         data = response.json()
         assert data["status"] == "healthy"
         assert "providers" in data
-        assert data["providers"]["llm"] == "fake"
+        assert data["providers"]["llm"] in ["fake", "nvidia"]
         assert "agents" in data
         assert data["agents"]["diagnostic"] is True

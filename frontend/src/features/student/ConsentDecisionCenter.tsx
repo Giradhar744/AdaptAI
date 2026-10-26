@@ -53,7 +53,7 @@ export const ConsentDecisionCenter: React.FC<ConsentDecisionCenterProps> = ({
   studentId: initialStudentId = 'student-dev-001',
   onBackToHome,
 }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const studentId = user?.student_id || initialStudentId;
   const [pendingProposals, setPendingProposals] = useState<PendingProposal[]>([]);
   const [preferences, setPreferences] = useState<StudentPreference[]>([]);
@@ -62,70 +62,42 @@ export const ConsentDecisionCenter: React.FC<ConsentDecisionCenterProps> = ({
   const [loading, setLoading] = useState(true);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  // Fetch all consent data
+  // Fetch all consent data from live backend
   const refreshConsentData = async () => {
     setLoading(true);
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     try {
       // 1. Pending proposals
-      const pendingRes = await fetch(`/api/v1/students/${studentId}/consent/pending`);
+      const pendingRes = await fetch(`/api/v1/students/${studentId}/consent/pending`, { headers });
       if (pendingRes.ok) {
         setPendingProposals(await pendingRes.json());
       } else {
-        // Fallback local sample if operating standalone
-        setPendingProposals([
-          {
-            ledger_id: 'pending-sample-1',
-            student_id: studentId,
-            proposal_type: 'scaffold_change',
-            proposed_by_agent: 'struggle_detection',
-            priority_class: 'pedagogy',
-            plain_title: 'Step-by-Step Worked Example Support',
-            plain_rationale:
-              'We noticed this topic involves multi-step reasoning. Would you like to review a step-by-step worked example before attempting similar questions?',
-            proposed_action: 'Switch question guidance to Worked Example',
-            proposal_payload: { scaffold_level: 'worked_example' },
-            created_at: new Date().toISOString(),
-          },
-        ]);
+        setPendingProposals([]);
       }
 
       // 2. Preferences
-      const prefRes = await fetch(`/api/v1/students/${studentId}/preferences`);
+      const prefRes = await fetch(`/api/v1/students/${studentId}/preferences`, { headers });
       if (prefRes.ok) {
         setPreferences(await prefRes.json());
       } else {
-        setPreferences([
-          {
-            key: 'modality_preference',
-            value: { modality: 'audio_text', speed: 'normal' },
-            updated_at: new Date().toISOString(),
-          },
-        ]);
+        setPreferences([]);
       }
 
       // 3. Trust Profile
-      const tpRes = await fetch(`/api/v1/students/${studentId}/trust-profile`);
+      const tpRes = await fetch(`/api/v1/students/${studentId}/trust-profile`, { headers });
       if (tpRes.ok) {
         setTrustProfile(await tpRes.json());
-      } else {
-        setTrustProfile({
-          student_id: studentId,
-          accepted_count: 3,
-          declined_count: 1,
-          total_decisions: 4,
-          acceptance_rate: 0.75,
-          nagging_reduction_factor: 1.0,
-          last_updated: new Date().toISOString(),
-        });
       }
 
       // 4. Ledger History
-      const histRes = await fetch(`/api/v1/students/${studentId}/consent/history`);
+      const histRes = await fetch(`/api/v1/students/${studentId}/consent/history`, { headers });
       if (histRes.ok) {
         setLedgerHistory(await histRes.json());
       }
     } catch {
-      // Fallback in-memory
+      // Keep state clean on error
     } finally {
       setLoading(false);
     }
@@ -133,14 +105,17 @@ export const ConsentDecisionCenter: React.FC<ConsentDecisionCenterProps> = ({
 
   useEffect(() => {
     refreshConsentData();
-  }, [studentId]);
+  }, [studentId, token]);
 
   const handleDecision = async (ledgerId: string, decision: 'approved' | 'declined') => {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`/api/v1/consent/${ledgerId}/decide`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, decided_by: 'student' }),
+        headers,
+        body: JSON.stringify({ decision, decided_by: user?.role === 'parent' ? 'parent' : 'student' }),
       });
 
       if (res.ok) {
@@ -150,35 +125,71 @@ export const ConsentDecisionCenter: React.FC<ConsentDecisionCenterProps> = ({
             : '✓ Adaptation declined. We have noted your preference and will not suggest it again during cooldown.'
         );
       } else {
-        // Optimistic UI update
-        setPendingProposals((prev) => prev.filter((p) => p.ledger_id !== ledgerId));
-        setFeedbackMessage(`✓ Decision recorded: ${decision}`);
+        const err = await res.json().catch(() => ({}));
+        setFeedbackMessage(err.detail || `✓ Decision recorded: ${decision}`);
       }
-      refreshConsentData();
+      await refreshConsentData();
     } catch {
-      setPendingProposals((prev) => prev.filter((p) => p.ledger_id !== ledgerId));
       setFeedbackMessage(`✓ Decision recorded: ${decision}`);
     }
   };
 
   const handleRevokePreference = async (key: string) => {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`/api/v1/students/${studentId}/consent/revoke`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preference_key: key, decided_by: 'student' }),
+        headers,
+        body: JSON.stringify({ preference_key: key, decided_by: user?.role === 'parent' ? 'parent' : 'student' }),
       });
 
       if (res.ok) {
         setFeedbackMessage(`✓ Preference '${key}' successfully revoked and logged to Consent Ledger.`);
       } else {
-        setPreferences((prev) => prev.filter((p) => p.key !== key));
-        setFeedbackMessage(`✓ Preference '${key}' revoked.`);
+        const err = await res.json().catch(() => ({}));
+        setFeedbackMessage(err.detail || `✓ Preference '${key}' revoked.`);
       }
-      refreshConsentData();
+      await refreshConsentData();
     } catch {
-      setPreferences((prev) => prev.filter((p) => p.key !== key));
       setFeedbackMessage(`✓ Preference '${key}' revoked.`);
+    }
+  };
+
+  const handleSimulateProposal = async (type: string, title: string) => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const payload =
+        type === 'scaffold_change'
+          ? { scaffold_level: 'worked_example' }
+          : type === 'modality_switch'
+          ? { modality: 'audio_text' }
+          : { break_duration_seconds: 300 };
+
+      const res = await fetch(`/api/v1/students/${studentId}/consent/propose`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          proposal_type: type,
+          payload,
+          proposed_by_agent: 'struggle_detection',
+          priority_class: 'pedagogy',
+          rationale: `Pedagogical adaptation proposed: ${title}`,
+        }),
+      });
+
+      if (res.ok) {
+        setFeedbackMessage(`✓ New adaptation proposed: "${title}". Review and decide below.`);
+        await refreshConsentData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setFeedbackMessage(err.detail || 'Could not create proposal.');
+      }
+    } catch {
+      setFeedbackMessage('Error connecting to Consent Ledger.');
     }
   };
 
@@ -239,15 +250,56 @@ export const ConsentDecisionCenter: React.FC<ConsentDecisionCenterProps> = ({
 
       {/* PENDING PROPOSALS SECTION */}
       <section aria-labelledby="heading-pending" style={{ marginBottom: 'var(--space-8)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
           <h2 id="heading-pending" style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
             Pending Adaptation Approvals ({pendingProposals.length})
           </h2>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <button
+              type="button"
+              className="btn-a11y"
+              onClick={() => handleSimulateProposal('scaffold_change', 'Step-by-Step Worked Example')}
+              style={{ fontSize: '0.8125rem', padding: '4px 10px' }}
+            >
+              + Propose Worked Example
+            </button>
+            <button
+              type="button"
+              className="btn-a11y"
+              onClick={() => handleSimulateProposal('modality_switch', 'Audio Narration Scaffolding')}
+              style={{ fontSize: '0.8125rem', padding: '4px 10px' }}
+            >
+              + Propose Audio Scaffolding
+            </button>
+          </div>
         </div>
 
         {pendingProposals.length === 0 ? (
-          <div className="card" style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            <span>✓ All caught up! No pending adaptations requiring your approval.</span>
+          <div className="card" style={{ padding: 'var(--space-6)', textAlign: 'center' }}>
+            <div style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
+              ✓ All caught up! No pending adaptations requiring your approval right now.
+            </div>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', maxWidth: '520px', margin: '0 auto var(--space-4)' }}>
+              When AdaptAI detects learning friction or when you request an accommodation, a transparent proposal will appear here for your explicit consent.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="button-primary"
+                onClick={() => handleSimulateProposal('scaffold_change', 'Step-by-Step Worked Example')}
+                style={{ fontSize: '0.875rem', padding: '8px 16px' }}
+              >
+                Simulate Worked Example Proposal
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => handleSimulateProposal('modality_switch', 'Audio Narration Scaffolding')}
+                style={{ fontSize: '0.875rem', padding: '8px 16px' }}
+              >
+                Simulate Audio Scaffolding Proposal
+              </button>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>

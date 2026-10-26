@@ -16,6 +16,6 @@ Guidelines:
 1. Cover key concepts systematically from each topic.
 2. Avoid confusing trick questions; focus on clarity and genuine conceptual grasp.
 3. Every question must have exactly 4 distinct options (A, B, C, D).
-4. The correct answer must match one of the options.
+4. The correct answer must match one of the options (A, B, C, or D).
 5. Provide a constructive explanation for post-test review.
 6. Ensure all question prompts are distinct (no duplicate prompts).

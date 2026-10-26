@@ -24,7 +24,8 @@ QUESTION_SCHEMA: Dict[str, Any] = {
                     "question_type": {"type": "string", "enum": ["mcq"]},
                     "options": {
                         "type": "array",
-                        "minItems": 2,
+                        "minItems": 4,
+                        "maxItems": 4,
                         "items": {
                             "type": "object",
                             "required": ["key", "text"],
@@ -118,15 +119,28 @@ class ContentGenerationAgent(BaseAgent):
                 continue  # Skip duplicate prompt
 
             options = q.get("options", [])
+            keys = ["A", "B", "C", "D"]
+            cleaned_options = []
+            for i, opt in enumerate(options[:4]):
+                k = keys[i]
+                t = opt.get("text", f"Option {k}")
+                cleaned_options.append({"key": k, "text": t})
+
+            while len(cleaned_options) < 4:
+                idx = len(cleaned_options)
+                cleaned_options.append({"key": keys[idx], "text": f"Alternative option {keys[idx]}"})
+
+            q["options"] = cleaned_options
+
             correct = q.get("correct_answer", {})
             correct_key = correct.get("key")
-
-            # Check if correct answer exists among options
-            option_keys = {opt.get("key") for opt in options}
+            option_keys = {opt["key"] for opt in cleaned_options}
             if correct_key not in option_keys:
                 logger.warning(f"Question prompt '{prompt[:30]}...' correct key '{correct_key}' missing from options; fixing.")
-                if options:
-                    q["correct_answer"] = {"key": options[0]["key"], "text": options[0]["text"]}
+                q["correct_answer"] = {"key": cleaned_options[0]["key"], "text": cleaned_options[0]["text"]}
+            else:
+                matching_opt = next((o for o in cleaned_options if o["key"] == correct_key), cleaned_options[0])
+                q["correct_answer"] = {"key": matching_opt["key"], "text": matching_opt["text"]}
 
             seen_prompts.add(prompt)
             sanitized.append(q)

@@ -259,11 +259,93 @@ class DiagnosticService:
             score=score,
             max_score=max_score,
             percentage=percentage,
+            recommended_age_band=placement_data.get("recommended_age_band", "11-15"),
+            progression_age_band=placement_data.get("progression_age_band"),
             recommended_course_id=rec_course_id,
             recommended_course_title=rec_course_title,
-            explanation=placement_data.get("explanation", "Recommended course based on diagnostic score and age band."),
+            recommended_courses=placement_data.get("recommended_courses", []),
+            progression_courses=placement_data.get("progression_courses", []),
+            explanation=placement_data.get("explanation", "Recommended course based on placement assessment score."),
             strengths=placement_data.get("strengths", []),
             focus_areas=placement_data.get("focus_areas", []),
+        )
+
+    @staticmethod
+    async def get_latest_student_diagnostic(
+        session: AsyncSession,
+        student_id: str,
+        current_user: User,
+    ) -> Optional[DiagnosticResultResponse]:
+        # Query most recent submitted diagnostic for this student
+        stmt = (
+            select(Diagnostic)
+            .where(Diagnostic.student_id == student_id)
+            .order_by(desc(Diagnostic.created_at))
+            .options(
+                selectinload(Diagnostic.student).selectinload(Student.age_band),
+                selectinload(Diagnostic.recommended_course),
+            )
+            .limit(1)
+        )
+        res = await session.execute(stmt)
+        diagnostic = res.scalar_one_or_none()
+        if not diagnostic:
+            return None
+
+        percentage = (diagnostic.score / diagnostic.max_score * 100) if diagnostic.max_score > 0 else 0.0
+
+        # Map to placement thresholds
+        if percentage < 50.0:
+            target_band = "7-10"
+            progression_band = "11-15"
+            target_label = "Below 11 years"
+        elif percentage <= 75.0:
+            target_band = "11-15"
+            progression_band = "15-20"
+            target_label = "11–15 years"
+        else:
+            target_band = "15-20"
+            progression_band = None
+            target_label = "Above 15 years"
+
+        # Query candidate published courses
+        courses_res = await session.execute(
+            select(Course)
+            .where(Course.is_published.is_(True))
+            .options(selectinload(Course.age_band))
+        )
+        all_courses = [
+            {
+                "id": c.id,
+                "title": c.title,
+                "subject": c.subject,
+                "fee": getattr(c, "fee", 0.0),
+                "age_band_code": c.age_band.code if c.age_band else "",
+                "description": c.description,
+            }
+            for c in courses_res.scalars().all()
+        ]
+
+        rec_courses = [c for c in all_courses if c.get("age_band_code") == target_band]
+        prog_courses = [c for c in all_courses if c.get("age_band_code") == progression_band] if progression_band else []
+        rec_title = diagnostic.recommended_course.title if diagnostic.recommended_course else (rec_courses[0]["title"] if rec_courses else None)
+        rec_id = diagnostic.recommended_course_id or (rec_courses[0]["id"] if rec_courses else None)
+
+        return DiagnosticResultResponse(
+            diagnostic_id=diagnostic.id,
+            student_id=diagnostic.student_id,
+            score=diagnostic.score,
+            max_score=diagnostic.max_score,
+            percentage=percentage,
+            recommended_age_band=target_band,
+            progression_age_band=progression_band,
+            recommended_course_id=rec_id,
+            recommended_course_title=rec_title,
+            recommended_courses=rec_courses,
+            progression_courses=prog_courses,
+            explanation=f"Based on your placement score of {diagnostic.score:.0f}/{diagnostic.max_score:.0f} ({percentage:.0f}%), your recommended level is {target_label} ({target_band}).",
+            strengths=["Completed initial placement evaluation"],
+            focus_areas=["Ready for self-paced practice with accessible hints"],
         )
 
     @staticmethod

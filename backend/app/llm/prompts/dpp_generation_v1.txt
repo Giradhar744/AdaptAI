@@ -16,6 +16,6 @@ Pedagogical & Accessibility Guidelines:
 1. Clear, concise wording avoiding double negatives, ambiguous phrasing, or sensory clutter.
 2. Ensure each question tests understanding of the core concept.
 3. Every question must have exactly 4 distinct options (A, B, C, D).
-4. The correct answer must match one of the 4 options exactly.
+4. The correct answer must match one of the 4 options (A, B, C, or D) exactly.
 5. Provide a supportive, plain-language explanation explaining why the correct answer is right.
 6. Ensure no two questions have duplicate prompts.

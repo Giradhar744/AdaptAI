@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -41,8 +41,14 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "fake"
     LLM_API_KEY: str = "fake-dev-key"
     LLM_MODEL: str = "fake-default"
+    LLM_BASE_URL: Optional[str] = None
     LLM_MAX_RETRIES: int = 2
-    LLM_TIMEOUT_SECONDS: int = 30
+    LLM_TIMEOUT_SECONDS: int = 90
+
+    # NVIDIA NIM Specific Configuration (Free API / Models)
+    NVIDIA_API_KEY: Optional[str] = None
+    NVIDIA_MODEL: str = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+    NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
 
     TTS_PROVIDER: str = "fake"
     STT_PROVIDER: str = "fake"

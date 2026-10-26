@@ -94,7 +94,7 @@ class FakeLLMProvider:
                             {"key": "A", "text": "Freezing"},
                             {"key": "B", "text": "Boiling"},
                             {"key": "C", "text": "Condensation"},
-                            {"key": "D", "text": "Sublimation"},
+                            {"key": "D", "text": "Evaporation"},
                         ],
                         "correct_answer": {"key": "A", "text": "Freezing"},
                         "explanation": "Freezing occurs when thermal energy is removed, transforming liquid water into solid ice.",

@@ -4,6 +4,9 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.llm.base import LLMProvider, Message, LLMResult, LLMProviderError
 from app.llm.providers.fake import FakeLLMProvider
+from app.llm.providers.openai_provider import OpenAILLMProvider
+from app.llm.providers.gemini_provider import GeminiLLMProvider
+from app.llm.providers.nvidia_provider import NvidiaNIMProvider
 
 
 class ResilientLLMClient:
@@ -52,9 +55,30 @@ def get_llm_provider(provider_name: Optional[str] = None) -> ResilientLLMClient:
 
     if name == "fake":
         raw_provider = FakeLLMProvider()
+    elif name in ("nvidia", "nim", "nvidia_nim"):
+        nvidia_key = settings.NVIDIA_API_KEY or (settings.LLM_API_KEY if settings.LLM_API_KEY != "fake-dev-key" else None)
+        if not nvidia_key:
+            logger.warning("NVIDIA_API_KEY is not configured in .env. Using FakeLLMProvider for offline dev/tests.")
+            raw_provider = FakeLLMProvider()
+        else:
+            raw_provider = NvidiaNIMProvider(api_key=nvidia_key)
+    elif name == "openai":
+        if not settings.LLM_API_KEY or settings.LLM_API_KEY == "fake-dev-key":
+            logger.warning("OPENAI/LLM_API_KEY is not set. Using FakeLLMProvider for offline dev/tests.")
+            raw_provider = FakeLLMProvider()
+        else:
+            raw_provider = OpenAILLMProvider()
+    elif name == "gemini":
+        if not settings.LLM_API_KEY or settings.LLM_API_KEY == "fake-dev-key":
+            logger.warning("GEMINI/LLM_API_KEY is not set. Using FakeLLMProvider for offline dev/tests.")
+            raw_provider = FakeLLMProvider()
+        else:
+            raw_provider = GeminiLLMProvider()
+    elif name in ("groq", "openrouter", "deepseek", "ollama"):
+        raw_provider = OpenAILLMProvider()
     else:
         # Fallback to Fake with a warning if an unconfigured external provider is named
-        logger.warning(f"Unknown or unconfigured LLM provider '{name}', falling back to FakeLLMProvider.")
+        logger.warning(f"Unknown LLM provider '{name}', falling back to FakeLLMProvider.")
         raw_provider = FakeLLMProvider()
 
     return ResilientLLMClient(

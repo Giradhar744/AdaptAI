@@ -10,6 +10,7 @@ from app.db.models.identity import User, Student, DisabilityProfile
 from app.db.models.adaptation import ConsentLedger, StudentPreference, TrustProfile
 from app.engine.consent_ledger import ConsentLedgerEngine
 from app.agents.consent_trust import ConsentTrustAgent
+from app.llm.decision_layer import Proposal
 from app.schemas.consent import (
     ConsentLedgerItem,
     PendingProposalResponse,
@@ -21,11 +22,35 @@ from app.schemas.consent import (
 class ConsentService:
 
     @staticmethod
+    async def _resolve_student_id(session: AsyncSession, current_user: User, student_id: str) -> str:
+        if student_id and student_id not in ("me", "current", "self", "student-dev-001"):
+            s_res = await session.execute(select(Student.id).where(Student.id == student_id))
+            if s_res.scalar_one_or_none():
+                return student_id
+
+        if current_user and current_user.student_profile:
+            return current_user.student_profile.id
+
+        if current_user:
+            s_user = await session.execute(select(Student.id).where(Student.user_id == current_user.id))
+            s_uid = s_user.scalar_one_or_none()
+            if s_uid:
+                return s_uid
+
+        first_s = await session.execute(select(Student.id).limit(1))
+        found = first_s.scalar_one_or_none()
+        if found:
+            return found
+
+        return student_id
+
+    @staticmethod
     async def get_pending_proposals(
         session: AsyncSession,
         current_user: User,
         student_id: str,
     ) -> List[PendingProposalResponse]:
+        student_id = await ConsentService._resolve_student_id(session, current_user, student_id)
         # Validate student existence and get profile
         s_stmt = (
             select(Student)
@@ -115,6 +140,7 @@ class ConsentService:
         current_user: User,
         student_id: str,
     ) -> List[ConsentLedgerItem]:
+        student_id = await ConsentService._resolve_student_id(session, current_user, student_id)
         stmt = (
             select(ConsentLedger)
             .where(ConsentLedger.student_id == student_id)
@@ -146,6 +172,7 @@ class ConsentService:
         current_user: User,
         student_id: str,
     ) -> List[StudentPreferenceResponse]:
+        student_id = await ConsentService._resolve_student_id(session, current_user, student_id)
         stmt = select(StudentPreference).where(StudentPreference.student_id == student_id)
         res = await session.execute(stmt)
         prefs = res.scalars().all()
@@ -167,6 +194,7 @@ class ConsentService:
         preference_key: str,
         decided_by: str = "student",
     ) -> ConsentLedgerItem:
+        student_id = await ConsentService._resolve_student_id(session, current_user, student_id)
         # Check active preference
         stmt = select(StudentPreference).where(
             and_(
@@ -246,6 +274,7 @@ class ConsentService:
         current_user: User,
         student_id: str,
     ) -> TrustProfileResponse:
+        student_id = await ConsentService._resolve_student_id(session, current_user, student_id)
         stmt = select(TrustProfile).where(TrustProfile.student_id == student_id)
         res = await session.execute(stmt)
         tp = res.scalar_one_or_none()
@@ -266,3 +295,63 @@ class ConsentService:
             nagging_reduction_factor=factor,
             last_updated=tp.last_updated.isoformat(),
         )
+
+    @staticmethod
+    async def create_proposal(
+        session: AsyncSession,
+        current_user: User,
+        student_id: str,
+        proposal_type: str,
+        payload: dict,
+        agent: str = "struggle_detection",
+        priority_class: str = "pedagogy",
+        rationale: str = "Pedagogical adaptation proposal",
+    ) -> PendingProposalResponse:
+        student_id = await ConsentService._resolve_student_id(session, current_user, student_id)
+        s_stmt = (
+            select(Student)
+            .where(Student.id == student_id)
+            .options(
+                selectinload(Student.disabilities).selectinload(DisabilityProfile.disability_type),
+                selectinload(Student.age_band),
+            )
+        )
+        s_res = await session.execute(s_stmt)
+        student = s_res.scalar_one_or_none()
+        if not student:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
+
+        age_band = student.age_band.code if student.age_band else "11-15"
+        disability = student.disabilities[0].disability_type.code if student.disabilities and student.disabilities[0].disability_type else None
+
+        proposal = Proposal(
+            agent=agent,
+            type=proposal_type,
+            priority_class=priority_class,
+            payload=payload,
+            requires_consent=True,
+            rationale=rationale,
+        )
+
+        entry = await ConsentLedgerEngine.record_pending_proposal(session, student_id, proposal)
+
+        title, rat, action = ConsentTrustAgent.format_plain_language_prompt(
+            proposal_type=entry.proposal_type,
+            proposal_payload=entry.proposal_payload,
+            age_band=age_band,
+            disability_type=disability,
+        )
+
+        return PendingProposalResponse(
+            ledger_id=entry.id,
+            student_id=entry.student_id,
+            proposal_type=entry.proposal_type,
+            proposed_by_agent=entry.proposed_by_agent,
+            priority_class=entry.priority_class,
+            plain_title=title,
+            plain_rationale=rat,
+            proposed_action=action,
+            proposal_payload=entry.proposal_payload,
+            created_at=entry.created_at.isoformat(),
+        )
+

@@ -100,30 +100,48 @@ class DiagnosticPlacementAgent(BaseAgent):
         percentage = (score / max_score * 100) if max_score > 0 else 0.0
         candidate_courses = req.payload.get("candidate_courses", [])
 
-        # Filter candidate courses matching student's age band (PROJECT.md §10.2)
-        target_age_band = ctx.age_band or "11-15"
-        recommended_course_id: Optional[str] = None
-        recommended_course_title: Optional[str] = None
+        # Map score percentage to required age bands (PROJECT.md & Product Specification §7.1, §8.1)
+        if percentage < 50.0:
+            target_age_band = "7-10"
+            target_label = "Below 11 years"
+            progression_age_band = "11-15"
+            progression_label = "11–15 years"
+        elif percentage <= 75.0:
+            target_age_band = "11-15"
+            target_label = "11–15 years"
+            progression_age_band = "15-20"
+            progression_label = "Above 15 years"
+        else:
+            target_age_band = "15-20"
+            target_label = "Above 15 years"
+            progression_age_band = None
+            progression_label = None
 
-        for c in candidate_courses:
-            if c.get("age_band_code") == target_age_band:
-                recommended_course_id = c.get("id")
-                recommended_course_title = c.get("title")
-                break
+        recommended_courses = [c for c in candidate_courses if c.get("age_band_code") == target_age_band]
+        progression_courses = [c for c in candidate_courses if c.get("age_band_code") == progression_age_band] if progression_age_band else []
 
-        # Fallback to first available published course if none match exact age band
+        recommended_course_id: Optional[str] = recommended_courses[0].get("id") if recommended_courses else None
+        recommended_course_title: Optional[str] = recommended_courses[0].get("title") if recommended_courses else None
+
+        # Fallback to first available published course if none match exact recommended age band
         if not recommended_course_id and candidate_courses:
             recommended_course_id = candidate_courses[0].get("id")
             recommended_course_title = candidate_courses[0].get("title")
 
         explanation = (
-            f"Based on your diagnostic score of {score:.1f}/{max_score:.1f} ({percentage:.0f}%), "
-            f"your age band ({target_age_band}), and your declared learning preferences, "
-            f"we recommend starting with '{recommended_course_title or 'Foundations'}'."
+            f"Based on your placement assessment score of {score:.1f}/{max_score:.1f} ({percentage:.0f}%), "
+            f"your recommended starting level is {target_label} ({target_age_band}). "
+            + (f"Suggested next progression level: {progression_label} ({progression_age_band})." if progression_age_band else "You placed into the highest course level.")
         )
 
-        strengths = ["Strong grasp of foundational concepts"]
-        focus_areas = ["Ready for guided practice with multimodal hints"]
+        strengths = [
+            f"Demonstrated foundational competence at {percentage:.0f}% accuracy",
+            "Clear readiness for structured multi-modal practice",
+        ]
+        focus_areas = [
+            f"Focus on core concepts in {target_label} curricula",
+            "Utilize audio and text hints when approaching unfamiliar topics",
+        ]
 
         proposal = Proposal(
             agent=self.name,
@@ -131,6 +149,8 @@ class DiagnosticPlacementAgent(BaseAgent):
             priority_class="pedagogy",
             payload={
                 "recommended_course_id": recommended_course_id,
+                "recommended_age_band": target_age_band,
+                "progression_age_band": progression_age_band,
                 "score": score,
                 "percentage": percentage,
             },
@@ -145,8 +165,12 @@ class DiagnosticPlacementAgent(BaseAgent):
                 "score": score,
                 "max_score": max_score,
                 "percentage": percentage,
+                "recommended_age_band": target_age_band,
+                "progression_age_band": progression_age_band,
                 "recommended_course_id": recommended_course_id,
                 "recommended_course_title": recommended_course_title,
+                "recommended_courses": recommended_courses,
+                "progression_courses": progression_courses,
                 "explanation": explanation,
                 "strengths": strengths,
                 "focus_areas": focus_areas,

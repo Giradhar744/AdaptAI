@@ -23,6 +23,7 @@ class TokenResponse(BaseModel):
     role: str
     user_id: str
     display_name: str
+    user: Optional["UserProfileResponse"] = None
 
 
 class DisabilityInfo(BaseModel):
@@ -41,3 +42,6 @@ class UserProfileResponse(BaseModel):
     age: Optional[int] = None
     age_band: Optional[str] = None
     disabilities: List[DisabilityInfo] = Field(default_factory=list)
+
+
+TokenResponse.model_rebuild()

@@ -27,8 +27,12 @@ class DiagnosticResultResponse(BaseModel):
     score: float
     max_score: float
     percentage: float
+    recommended_age_band: str = "11-15"
+    progression_age_band: Optional[str] = None
     recommended_course_id: Optional[str] = None
     recommended_course_title: Optional[str] = None
+    recommended_courses: List[dict] = Field(default_factory=list)
+    progression_courses: List[dict] = Field(default_factory=list)
     explanation: str
     strengths: List[str] = Field(default_factory=list)
     focus_areas: List[str] = Field(default_factory=list)

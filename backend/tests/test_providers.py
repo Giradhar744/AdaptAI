@@ -57,6 +57,15 @@ async def test_fake_llm_structured_schema_dpp():
 
 
 @pytest.mark.asyncio
+async def test_nvidia_nim_provider_instantiation():
+    from app.llm.providers.nvidia_provider import NvidiaNIMProvider
+    provider = NvidiaNIMProvider(api_key="nvapi-test123")
+    assert provider.endpoint == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert provider.model in ["meta/llama-3.3-70b-instruct", "nvidia/nemotron-3.5-super-vl-120b-a12b"]
+    assert provider.api_key == "nvapi-test123"
+
+
+@pytest.mark.asyncio
 async def test_llm_retry_on_transient_failure():
     # Provider fails on first attempt, succeeds on second attempt
     fake_provider = FakeLLMProvider(failure_count=1)

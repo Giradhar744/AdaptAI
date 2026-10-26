@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import String, Integer, Text, Boolean, ForeignKey
+from sqlalchemy import String, Integer, Text, Boolean, ForeignKey, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin
 
@@ -12,6 +12,7 @@ class Course(Base, UUIDMixin, TimestampMixin):
     subject: Mapped[str] = mapped_column(String(100), nullable=False)
     age_band_id: Mapped[str] = mapped_column(String(36), ForeignKey("age_bands.id"), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     teacher: Mapped["Teacher"] = relationship("Teacher", back_populates="courses")

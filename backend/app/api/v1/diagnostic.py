@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +35,16 @@ async def submit_diagnostic(
 ):
     """Submits student answers, evaluates score, and produces course placement recommendation."""
     return await DiagnosticService.submit_diagnostic(session, id, current_user, req)
+
+
+@router.get("/students/{id}/diagnostic/latest", response_model=Optional[DiagnosticResultResponse])
+async def get_latest_diagnostic(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Retrieves the student's latest completed diagnostic result and recommended courses."""
+    return await DiagnosticService.get_latest_student_diagnostic(session, id, current_user)
 
 
 @router.get("/diagnostic/{id}/recommendation", response_model=DiagnosticResultResponse)

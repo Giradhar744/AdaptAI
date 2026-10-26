@@ -1,6 +1,6 @@
 from typing import Optional
 from sqlalchemy import select, and_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
@@ -76,78 +76,18 @@ class AuthService:
         await session.commit()
 
         token = create_access_token(subject=user.id, role=user.role)
+        profile = await AuthService.get_user_profile(session, user.id)
         return TokenResponse(
             access_token=token,
             token_type="bearer",
             role=user.role,
             user_id=user.id,
-            display_name=display_name,
+            display_name=profile.display_name,
+            user=profile,
         )
 
-    @staticmethod
-    async def login(session: AsyncSession, req: UserLoginRequest) -> TokenResponse:
-        stmt = (
-            select(User)
-            .where(User.email == req.email)
-            .options(
-                selectinload(User.teacher_profile),
-                selectinload(User.student_profile),
-            )
-        )
-        result = await session.execute(stmt)
-        user = result.scalar_one_or_none()
-
-        if not user or not verify_password(req.password, user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is inactive.",
-            )
-
-        display_name = user.email.split("@")[0]
-        if user.teacher_profile:
-            display_name = user.teacher_profile.display_name
-        elif user.student_profile:
-            display_name = user.student_profile.display_name
-
-        token = create_access_token(subject=user.id, role=user.role)
-        return TokenResponse(
-            access_token=token,
-            token_type="bearer",
-            role=user.role,
-            user_id=user.id,
-            display_name=display_name,
-        )
-
-    @staticmethod
-    async def get_user_profile(session: AsyncSession, user_id: str) -> UserProfileResponse:
-        stmt = (
-            select(User)
-            .where(User.id == user_id)
-            .options(
-                selectinload(User.teacher_profile),
-                selectinload(User.student_profile)
-                .selectinload(Student.age_band),
-                selectinload(User.student_profile)
-                .selectinload(Student.disabilities)
-                .selectinload(DisabilityProfile.disability_type),
-            )
-        )
-        result = await session.execute(stmt)
-        user = result.scalar_one_or_none()
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found.",
-            )
-
+    @classmethod
+    def _build_profile_response(cls, user: User) -> UserProfileResponse:
         display_name = user.email
         teacher_id: Optional[str] = None
         student_id: Optional[str] = None
@@ -181,3 +121,67 @@ class AuthService:
             age_band=age_band_label,
             disabilities=disabilities,
         )
+
+    @classmethod
+    async def login(cls, session: AsyncSession, req: UserLoginRequest) -> TokenResponse:
+        stmt = (
+            select(User)
+            .where(User.email == req.email)
+            .options(
+                joinedload(User.teacher_profile),
+                joinedload(User.student_profile).joinedload(Student.age_band),
+                joinedload(User.student_profile)
+                .joinedload(Student.disabilities)
+                .joinedload(DisabilityProfile.disability_type),
+            )
+        )
+        result = await session.execute(stmt)
+        user = result.unique().scalar_one_or_none()
+
+        if not user or not verify_password(req.password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is inactive.",
+            )
+
+        token = create_access_token(subject=user.id, role=user.role)
+        profile = cls._build_profile_response(user)
+        return TokenResponse(
+            access_token=token,
+            token_type="bearer",
+            role=user.role,
+            user_id=user.id,
+            display_name=profile.display_name,
+            user=profile,
+        )
+
+    @classmethod
+    async def get_user_profile(cls, session: AsyncSession, user_id: str) -> UserProfileResponse:
+        stmt = (
+            select(User)
+            .where(User.id == user_id)
+            .options(
+                joinedload(User.teacher_profile),
+                joinedload(User.student_profile).joinedload(Student.age_band),
+                joinedload(User.student_profile)
+                .joinedload(Student.disabilities)
+                .joinedload(DisabilityProfile.disability_type),
+            )
+        )
+        result = await session.execute(stmt)
+        user = result.unique().scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found.",
+            )
+
+        return cls._build_profile_response(user)

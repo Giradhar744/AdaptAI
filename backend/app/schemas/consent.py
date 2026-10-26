@@ -53,3 +53,12 @@ class StudentPreferenceResponse(BaseModel):
 class RevokePreferenceRequest(BaseModel):
     preference_key: str
     decided_by: Literal["student", "parent"] = "student"
+
+
+class CreateProposalRequest(BaseModel):
+    proposal_type: str = "scaffold_change"
+    payload: Dict[str, Any] = Field(default_factory=lambda: {"scaffold_level": "worked_example"})
+    proposed_by_agent: str = "struggle_detection"
+    priority_class: str = "pedagogy"
+    rationale: Optional[str] = "Student experienced friction with multi-step reasoning."
+

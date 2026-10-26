@@ -4,17 +4,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.db.models.identity import User
-from app.core.deps import get_current_user, require_teacher
+from app.core.deps import get_current_user, require_teacher, require_student
 from app.schemas.course import (
     CourseCreateRequest,
     CourseUpdateRequest,
     CourseResponse,
     CourseDetailResponse,
     ChapterCreateRequest,
+    ChapterUpdateRequest,
     ChapterResponse,
     TopicCreateRequest,
     TopicResponse,
     LectureCreateRequest,
+    LectureUpdateRequest,
     LectureResponse,
     LectureUploadUrlRequest,
     UploadUrlResponse,
@@ -52,6 +54,7 @@ async def list_courses(
         teacher_id=teacher_id,
         age_band_code=age_band_code,
         only_published=not mine,
+        current_user=current_user,
     )
 
 
@@ -61,8 +64,8 @@ async def get_course(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Retrieves full details of a course including chapters, topics, and lectures."""
-    return await CourseService.get_course_detail(session, id)
+    """Retrieves full details of a course. Video playback URLs are protected and require enrolment."""
+    return await CourseService.get_course_detail(session, id, current_user=current_user)
 
 
 @router.patch("/courses/{id}", response_model=CourseResponse)
@@ -72,7 +75,7 @@ async def update_course(
     current_teacher: User = Depends(require_teacher),
     session: AsyncSession = Depends(get_db),
 ):
-    """Updates a course title, description, or published state (Teacher owner only)."""
+    """Updates a course title, description, fee, or published state (Teacher owner only)."""
     return await CourseService.update_course(session, id, current_teacher, req)
 
 
@@ -86,6 +89,27 @@ async def create_chapter(
 ):
     """Adds a new chapter to an existing course (Teacher owner only)."""
     return await CourseService.add_chapter(session, id, current_teacher, req)
+
+
+@router.patch("/chapters/{id}", response_model=ChapterResponse)
+async def update_chapter(
+    id: str,
+    req: ChapterUpdateRequest,
+    current_teacher: User = Depends(require_teacher),
+    session: AsyncSession = Depends(get_db),
+):
+    """Updates chapter title or position (Teacher owner only)."""
+    return await CourseService.update_chapter(session, id, current_teacher, req)
+
+
+@router.delete("/chapters/{id}")
+async def delete_chapter(
+    id: str,
+    current_teacher: User = Depends(require_teacher),
+    session: AsyncSession = Depends(get_db),
+):
+    """Deletes a chapter with safe cascade (Teacher owner only)."""
+    return await CourseService.delete_chapter(session, id, current_teacher)
 
 
 # 3. Topic Endpoints
@@ -122,11 +146,53 @@ async def create_lecture(
     return await CourseService.add_lecture(session, current_teacher, req)
 
 
+@router.patch("/lectures/{id}", response_model=LectureResponse)
+async def update_lecture(
+    id: str,
+    req: LectureUpdateRequest,
+    current_teacher: User = Depends(require_teacher),
+    session: AsyncSession = Depends(get_db),
+):
+    """Updates lecture details or video reference (Teacher owner only)."""
+    return await CourseService.update_lecture(session, id, current_teacher, req)
+
+
+@router.delete("/lectures/{id}")
+async def delete_lecture(
+    id: str,
+    current_teacher: User = Depends(require_teacher),
+    session: AsyncSession = Depends(get_db),
+):
+    """Deletes a lecture (Teacher owner only)."""
+    return await CourseService.delete_lecture(session, id, current_teacher)
+
+
 @router.get("/chapters/{id}/lectures", response_model=List[LectureResponse])
 async def list_chapter_lectures(
     id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Retrieves all lectures and video playback URLs for a chapter."""
-    return await CourseService.list_chapter_lectures(session, id)
+    """Retrieves all lectures for a chapter. Video playback URLs are provided to enrolled students only."""
+    return await CourseService.list_chapter_lectures(session, id, current_user=current_user)
+
+
+# 5. Student Learning Progress Endpoints
+@router.post("/chapters/{id}/lectures/complete")
+async def mark_lecture_completed(
+    id: str,
+    current_student: User = Depends(require_student),
+    session: AsyncSession = Depends(get_db),
+):
+    """Marks a chapter lecture complete and unlocks its Daily Practice (DPP)."""
+    return await CourseService.mark_lecture_completed(session, id, current_student)
+
+
+@router.post("/chapters/{id}/dpp/complete")
+async def mark_dpp_completed(
+    id: str,
+    current_student: User = Depends(require_student),
+    session: AsyncSession = Depends(get_db),
+):
+    """Marks a chapter DPP complete and unlocks the chapter assessment test."""
+    return await CourseService.mark_dpp_completed(session, id, current_student)

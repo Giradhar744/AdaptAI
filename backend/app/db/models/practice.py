@@ -8,11 +8,13 @@ from app.db.base import Base, UUIDMixin, TimestampMixin
 class DPP(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "dpps"
 
-    topic_id: Mapped[str] = mapped_column(String(36), ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
+    topic_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("topics.id", ondelete="CASCADE"), nullable=True)
+    lecture_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=True)
     generated_by: Mapped[str] = mapped_column(String(20), default="llm", nullable=False)  # llm | teacher
     status: Mapped[str] = mapped_column(String(20), default="published", nullable=False)  # draft | published
 
-    topic: Mapped["Topic"] = relationship("Topic")
+    topic: Mapped[Optional["Topic"]] = relationship("Topic")
+    lecture: Mapped[Optional["Lecture"]] = relationship("Lecture")
     questions: Mapped[List["Question"]] = relationship(
         "Question",
         primaryjoin="and_(Question.parent_id == DPP.id, Question.parent_type == 'dpp')",

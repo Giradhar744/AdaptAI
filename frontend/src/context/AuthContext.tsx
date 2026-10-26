@@ -41,11 +41,26 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'adaptai_access_token';
+const USER_KEY = 'adaptai_user_profile';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem(USER_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    const hasToken = !!localStorage.getItem(TOKEN_KEY);
+    const hasUser = !!localStorage.getItem(USER_KEY);
+    return hasToken && !hasUser;
+  });
 
   const fetchProfile = async (authToken: string) => {
     try {
@@ -57,23 +72,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.ok) {
         const data = await res.json();
         setUser(data);
-      } else {
+        localStorage.setItem(USER_KEY, JSON.stringify(data));
+      } else if (res.status === 401 || res.status === 403) {
         // Token expired or invalid
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
         setToken(null);
         setUser(null);
       }
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
-      setToken(null);
-      setUser(null);
+      // Keep cached user on network glitch
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (token) {
+    if (token && !user) {
       fetchProfile(token);
     } else {
       setIsLoading(false);
@@ -97,8 +112,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await res.json();
     const accessToken = data.access_token;
     localStorage.setItem(TOKEN_KEY, accessToken);
+
+    if (data.user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      setUser(data.user);
+      setIsLoading(false);
+    }
     setToken(accessToken);
-    await fetchProfile(accessToken);
   };
 
   const register = async (payload: RegisterPayload) => {
@@ -118,12 +138,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await res.json();
     const accessToken = data.access_token;
     localStorage.setItem(TOKEN_KEY, accessToken);
+
+    if (data.user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      setUser(data.user);
+      setIsLoading(false);
+    }
     setToken(accessToken);
-    await fetchProfile(accessToken);
   };
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem('adaptai_active_view');
     setToken(null);
     setUser(null);
   };

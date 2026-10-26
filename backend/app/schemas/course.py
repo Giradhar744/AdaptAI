@@ -21,8 +21,10 @@ class LectureResponse(BaseModel):
     chapter_id: str
     title: str
     video_ref: str
-    playback_url: str
+    playback_url: Optional[str] = None
     duration_seconds: int
+    dpp_id: Optional[str] = None
+    is_completed: bool = False
 
 
 class LectureCreateRequest(BaseModel):
@@ -30,6 +32,12 @@ class LectureCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     video_ref: str = Field(min_length=1, description="Video ID or storage reference")
     duration_seconds: int = Field(default=0, ge=0)
+
+
+class LectureUpdateRequest(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    video_ref: Optional[str] = None
+    duration_seconds: Optional[int] = Field(default=None, ge=0)
 
 
 class LectureUploadUrlRequest(BaseModel):
@@ -50,10 +58,18 @@ class ChapterResponse(BaseModel):
     position: int
     topics: List[TopicResponse] = Field(default_factory=list)
     lectures: List[LectureResponse] = Field(default_factory=list)
+    dpp_completed: bool = False
+    test_unlocked: bool = False
+    chapter_test_id: Optional[str] = None
 
 
 class ChapterCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+    position: Optional[int] = Field(default=None, ge=1)
+
+
+class ChapterUpdateRequest(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     position: Optional[int] = Field(default=None, ge=1)
 
 
@@ -67,8 +83,10 @@ class CourseResponse(BaseModel):
     age_band_code: str
     age_band_label: str
     description: Optional[str] = None
+    fee: float = 0.0
     is_published: bool
     chapters_count: int = 0
+    is_enrolled: bool = False
 
 
 class CourseDetailResponse(CourseResponse):
@@ -80,10 +98,12 @@ class CourseCreateRequest(BaseModel):
     subject: str = Field(min_length=1, max_length=100)
     age_band_code: str = Field(description="Code for target age band: 7-10, 11-15, 15-20")
     description: Optional[str] = None
+    fee: float = Field(default=0.0, ge=0.0)
 
 
 class CourseUpdateRequest(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     subject: Optional[str] = Field(default=None, min_length=1, max_length=100)
     description: Optional[str] = None
+    fee: Optional[float] = Field(default=None, ge=0.0)
     is_published: Optional[bool] = None
