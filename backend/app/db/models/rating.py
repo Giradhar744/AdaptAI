@@ -1,7 +1,11 @@
+from typing import TYPE_CHECKING
 from datetime import datetime
 from sqlalchemy import String, Float, Integer, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin, utc_now
+
+if TYPE_CHECKING:
+    from app.db.models.content import Course
 
 
 class CourseRating(Base, UUIDMixin, TimestampMixin):

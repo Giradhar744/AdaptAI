@@ -18,6 +18,7 @@ from app.api.v1.analytics import router as analytics_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Connected to Supabase PostgreSQL or configured database
     logger.info(f"Starting AdaptAI backend in {settings.ENVIRONMENT} mode")
     try:
         from app.db.session import AsyncSessionLocal

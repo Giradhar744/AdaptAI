@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { formatStudentTrack } from '../../utils/studentGroup';
 
 interface CoursePurchaseModalProps {
   isOpen: boolean;
@@ -100,7 +101,7 @@ export const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({
           Join Course: {course.title}
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-4)' }}>
-          Subject: <strong>{course.subject}</strong> · Age Group: <strong>{course.age_band_label || 'All Ages'}</strong>
+          Subject: <strong>{course.subject}</strong> · Batch: <strong>{formatStudentTrack(course.age_band_label)}</strong>
         </p>
 
         {/* Pricing Summary Card */}

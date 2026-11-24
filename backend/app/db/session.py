@@ -27,7 +27,7 @@ def get_normalized_database_url_and_args(raw_url: str) -> Tuple[str, Dict[str, A
             connect_args["ssl"] = "require"
         new_query = urlencode(query_params, doseq=True)
         url = urlunparse(parsed._replace(query=new_query))
-    elif "localhost" not in url and "127.0.0.1" not in url and not url.startswith("sqlite"):
+    elif "localhost" not in url and "127.0.0.1" not in url:
         connect_args["ssl"] = "require"
 
     return url, connect_args
@@ -35,21 +35,17 @@ def get_normalized_database_url_and_args(raw_url: str) -> Tuple[str, Dict[str, A
 
 db_url, connect_args = get_normalized_database_url_and_args(settings.DATABASE_URL)
 
-# Create asynchronous engine with connection pooling for cloud resiliency
+# Create asynchronous engine with connection pooling for Supabase PostgreSQL resiliency
 engine_kwargs: Dict[str, Any] = {
     "connect_args": connect_args,
     "echo": False,
     "future": True,
+    "pool_size": 15,
+    "max_overflow": 25,
+    "pool_timeout": 30,
+    "pool_recycle": 1800,
+    "pool_pre_ping": False,
 }
-
-if "sqlite" not in db_url:
-    engine_kwargs.update({
-        "pool_size": 15,
-        "max_overflow": 25,
-        "pool_timeout": 30,
-        "pool_recycle": 1800,
-        "pool_pre_ping": False,
-    })
 
 engine = create_async_engine(db_url, **engine_kwargs)
 

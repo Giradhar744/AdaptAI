@@ -1,7 +1,13 @@
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import String, Integer, Float, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models.identity import Student
+    from app.db.models.reference import DisabilityType
+    from app.db.models.content import Course
+    from app.db.models.practice import Question
 
 
 class Diagnostic(Base, UUIDMixin, TimestampMixin):

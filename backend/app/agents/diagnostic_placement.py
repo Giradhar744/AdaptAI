@@ -105,38 +105,51 @@ class DiagnosticPlacementAgent(BaseAgent):
         percentage = (score / max_score * 100) if max_score > 0 else 0.0
         candidate_courses = req.payload.get("candidate_courses", [])
 
-        # Map score percentage to required age bands (PROJECT.md & Product Specification §7.1, §8.1)
+        # Determine placement batch based on assessment score percentage
         if percentage < 50.0:
             target_age_band = "7-10"
-            target_label = "Below 11 years"
-            progression_age_band = "11-15"
-            progression_label = "11–15 years"
         elif percentage <= 75.0:
             target_age_band = "11-15"
-            target_label = "11–15 years"
-            progression_age_band = "15-20"
-            progression_label = "Above 15 years"
         else:
             target_age_band = "15-20"
-            target_label = "Above 15 years"
-            progression_age_band = None
-            progression_label = None
 
-        recommended_courses = [c for c in candidate_courses if c.get("age_band_code") == target_age_band]
-        progression_courses = [c for c in candidate_courses if c.get("age_band_code") == progression_age_band] if progression_age_band else []
+        BATCH_RANKS = {
+            "7-10": 1,
+            "11-15": 2,
+            "15-20": 3,
+            "16-20": 3,
+        }
+        target_rank = BATCH_RANKS.get(target_age_band, 2)
 
-        recommended_course_id: Optional[str] = recommended_courses[0].get("id") if recommended_courses else None
-        recommended_course_title: Optional[str] = recommended_courses[0].get("title") if recommended_courses else None
+        # Show courses of student's batch as well as all higher batches
+        recommended_courses = [
+            c for c in candidate_courses
+            if BATCH_RANKS.get(c.get("age_band_code"), 1) >= target_rank
+        ]
+        progression_age_band = None
+        progression_courses = []
 
-        # Fallback to first available published course if none match exact recommended age band
+        # Recommended course for enrollment: prefer student's placed batch
+        exact_matches = [c for c in candidate_courses if c.get("age_band_code") == target_age_band]
+        recommended_course_id: Optional[str] = exact_matches[0].get("id") if exact_matches else (recommended_courses[0].get("id") if recommended_courses else None)
+        recommended_course_title: Optional[str] = exact_matches[0].get("title") if exact_matches else (recommended_courses[0].get("title") if recommended_courses else None)
+
+        # Fallback to first available published course if none match
         if not recommended_course_id and candidate_courses:
             recommended_course_id = candidate_courses[0].get("id")
             recommended_course_title = candidate_courses[0].get("title")
 
+        # Map age bands to empowering student learning batches (Alpha, Beta, Gamma)
+        STUDENT_GROUPS = {
+            "7-10": "Batch Alpha",
+            "11-15": "Batch Beta",
+            "15-20": "Batch Gamma",
+        }
+        target_group = STUDENT_GROUPS.get(target_age_band, "Batch Beta")
+
         explanation = (
-            f"Based on your placement assessment score of {score:.1f}/{max_score:.1f} ({percentage:.0f}%), "
-            f"your recommended starting level is {target_label} ({target_age_band}). "
-            + (f"Suggested next progression level: {progression_label} ({progression_age_band})." if progression_age_band else "You placed into the highest course level.")
+            f"Based on your enrollment test score of {score:.1f}/{max_score:.1f} ({percentage:.0f}%), "
+            f"your recommended learning batch is {target_group}."
         )
 
         strengths = [
@@ -144,7 +157,7 @@ class DiagnosticPlacementAgent(BaseAgent):
             "Clear readiness for structured multi-modal practice",
         ]
         focus_areas = [
-            f"Focus on core concepts in {target_label} curricula",
+            f"Focus on core concepts in {target_group} curricula",
             "Utilize audio and text hints when approaching unfamiliar topics",
         ]
 

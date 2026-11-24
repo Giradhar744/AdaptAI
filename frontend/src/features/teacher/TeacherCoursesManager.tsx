@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { QuestionReviewModal } from './QuestionReviewModal';
+import { LoadingScreen } from '../../components/LoadingScreen';
 
 interface Lecture {
   id: string;
@@ -75,14 +76,20 @@ const AGE_BANDS: AgeBandDef[] = [
 
 interface TeacherCoursesManagerProps {
   onLaunchPractice?: (dppId?: string, chapterId?: string, chapterTitle?: string, courseTitle?: string) => void;
-  onOpenCreateCourse?: () => void;
+  onOpenCreateCourse?: (defaultAgeBand?: string) => void;
   onOpenAnalytics?: (courseId: string) => void;
+  refreshTrigger?: number;
+  targetAgeBand?: string;
+  targetCourseId?: string;
 }
 
 export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
   onLaunchPractice,
   onOpenCreateCourse,
   onOpenAnalytics,
+  refreshTrigger,
+  targetAgeBand,
+  targetCourseId,
 }) => {
   const { token } = useAuth();
 
@@ -143,10 +150,17 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
         const list: CourseSummary[] = Array.isArray(data) ? data : [];
         setCourses(list);
 
-        // If current active age band has no courses, select the first one that does
-        const hasActiveCourses = list.some((c) => c.age_band_code === activeAgeBandCode);
-        if (!hasActiveCourses && list.length > 0) {
-          setActiveAgeBandCode(list[0].age_band_code || '7-10');
+        // If targetAgeBand is specified, switch to it; otherwise if current band is empty, pick the first band with courses
+        if (targetAgeBand) {
+          setActiveAgeBandCode(targetAgeBand);
+        } else {
+          const hasActiveCourses = list.some((c) => c.age_band_code === activeAgeBandCode);
+          if (!hasActiveCourses && list.length > 0) {
+            const firstWithCourse = list.find((c) => c.age_band_code)?.age_band_code;
+            if (firstWithCourse) {
+              setActiveAgeBandCode(firstWithCourse);
+            }
+          }
         }
       } else {
         const err = await res.json().catch(() => ({}));
@@ -161,7 +175,19 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
 
   useEffect(() => {
     fetchTeacherCourses();
-  }, [token]);
+  }, [token, refreshTrigger]);
+
+  useEffect(() => {
+    if (targetAgeBand) {
+      setActiveAgeBandCode(targetAgeBand);
+    }
+  }, [targetAgeBand]);
+
+  useEffect(() => {
+    if (targetCourseId) {
+      setSelectedCourseId(targetCourseId);
+    }
+  }, [targetCourseId]);
 
   // 2. Fetch Course Details (with Chapters & Lectures) with in-memory caching
   const fetchCourseDetail = async (cId: string, forceRefresh = false) => {
@@ -472,16 +498,28 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
           </p>
         </div>
 
-        {onOpenCreateCourse && (
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <button
             type="button"
-            className="button-primary"
-            onClick={onOpenCreateCourse}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+            className="button-secondary"
+            onClick={() => fetchTeacherCourses()}
+            disabled={loadingCourses}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px' }}
+            title="Reload all courses from server"
           >
-            <span>➕</span> Create New Course
+            <span>🔄</span> {loadingCourses ? 'Loading...' : 'Refresh'}
           </button>
-        )}
+          {onOpenCreateCourse && (
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => onOpenCreateCourse(activeAgeBandCode)}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+            >
+              <span>➕</span> Create New Course
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Notifications / Feedback Alerts */}
@@ -565,9 +603,19 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
 
       {/* Main Viewport: Swappable between Subjects List & Chapter Curriculum */}
       {loadingCourses ? (
-        <div className="card" style={{ textAlign: 'center', padding: 'var(--space-10)' }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Loading courses for {activeAgeBand.title}...</p>
-        </div>
+        <LoadingScreen
+          preset="loadingCurriculum"
+          title={`Loading Courses for ${activeAgeBand.title}...`}
+          subtitle="Fetching subjects, course outlines, and chapter metrics from database..."
+          variant="card"
+        />
+      ) : selectedCourseId && loadingDetail ? (
+        <LoadingScreen
+          preset="loadingCurriculum"
+          title="Loading Course Curriculum..."
+          subtitle="Fetching chapters, lesson videos, and daily practice problems from database..."
+          variant="card"
+        />
       ) : selectedCourseId && courseDetail ? (
         /* LEVEL 3 & 4: Subject Curriculum View (Chapters & Lectures) */
         <div className="card" style={{ padding: 'var(--space-6)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-strong)' }}>
@@ -614,7 +662,7 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
           </div>
 
           {/* Subject Banner */}
-          <div style={{ background: activeAgeBand.bgColor, border: `1px solid ${activeAgeBand.accentColor}33`, borderRadius: 'var(--radius-md)', padding: '16px 20px', marginBottom: 'var(--space-6)' }}>
+          <div style={{ background: activeAgeBand.bgColor, border: `1px solid ${activeAgeBand.accentColor}33`, borderRadius: 'var(--radius-md)', padding: '16px 20px', marginBottom: 'var(--space-4)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
               <div>
                 <span className="brand-badge" style={{ fontSize: '0.75rem', marginBottom: '4px' }}>
@@ -629,6 +677,72 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Multi-Course Switcher Tabs for this Subject */}
+          {(() => {
+            const siblingCourses = currentAgeBandCourses.filter(
+              (c) => (c.subject?.trim() || 'General').toLowerCase() === (courseDetail.subject?.trim() || 'General').toLowerCase()
+            );
+            if (siblingCourses.length <= 1) return null;
+            return (
+              <div style={{ marginBottom: 'var(--space-6)', padding: '12px 16px', background: 'var(--bg-muted)', borderRadius: 'var(--radius-md)', border: '1.5px solid var(--border-subtle)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Courses in "{courseDetail.subject}" ({siblingCourses.length}):
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    Click a course below to switch curriculum view:
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  {siblingCourses.map((c) => {
+                    const isCurrent = c.id === selectedCourseId;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCourseId(c.id);
+                          setIsAddingChapter(false);
+                          setAddingLectureToChapterId(null);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 16px',
+                          borderRadius: 'var(--radius-md)',
+                          fontSize: '0.875rem',
+                          fontWeight: isCurrent ? 800 : 600,
+                          background: isCurrent ? activeAgeBand.accentColor : 'var(--bg-surface)',
+                          color: isCurrent ? '#ffffff' : 'var(--text-primary)',
+                          border: isCurrent ? `2px solid ${activeAgeBand.accentColor}` : '1.5px solid var(--border-subtle)',
+                          boxShadow: isCurrent ? 'var(--shadow-sm)' : 'none',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <span>📖 {c.title}</span>
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            padding: '1px 8px',
+                            borderRadius: '999px',
+                            background: isCurrent ? 'rgba(255,255,255,0.25)' : 'var(--bg-muted)',
+                            color: isCurrent ? '#ffffff' : 'var(--text-secondary)',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {c.chapters_count || 0} Ch.
+                        </span>
+                        {isCurrent && <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>• Active</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Add Chapter Inline Form */}
           {isAddingChapter && (
@@ -1050,7 +1164,7 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
                 You have not authored any courses for {activeAgeBand.title} ({activeAgeBand.subtitle}). Create a course to add subjects like Science or Mathematics.
               </p>
               {onOpenCreateCourse && (
-                <button type="button" className="button-primary" onClick={onOpenCreateCourse}>
+                <button type="button" className="button-primary" onClick={() => onOpenCreateCourse(activeAgeBandCode)}>
                   ✨ Create Subject / Course for {activeAgeBand.title}
                 </button>
               )}
@@ -1120,24 +1234,51 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
 
                       {/* Course Titles inside this Subject */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', margin: 'var(--space-3) 0' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Select a Course to View & Edit:
+                        </div>
                         {subjectCourses.map((c) => (
                           <div
                             key={c.id}
+                            onClick={() => setSelectedCourseId(c.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter') setSelectedCourseId(c.id); }}
                             style={{
-                              background: 'var(--bg-muted)',
-                              padding: '8px 12px',
-                              borderRadius: 'var(--radius-sm)',
+                              background: 'var(--bg-surface)',
+                              padding: '10px 14px',
+                              borderRadius: 'var(--radius-md)',
+                              border: '1.5px solid var(--border-subtle)',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
                             }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = activeAgeBand.accentColor;
+                              e.currentTarget.style.backgroundColor = activeAgeBand.bgColor;
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                              e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+                            }}
+                            title={`Click to open ${c.title} curriculum`}
                           >
-                            <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-                              {c.title}
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              {c.chapters_count || 0} Ch.
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '1.1rem' }}>📖</span>
+                              <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {c.title}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-muted)', padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>
+                                {c.chapters_count || 0} Ch.
+                              </span>
+                              <span style={{ fontSize: '0.8125rem', color: activeAgeBand.accentColor, fontWeight: 700 }}>
+                                Open →
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1151,7 +1292,9 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
                         style={{ width: '100%', justifyContent: 'center' }}
                         onClick={() => setSelectedCourseId(subjectCourses[0].id)}
                       >
-                        Open Subject Curriculum & Chapters →
+                        {subjectCourses.length > 1
+                          ? `Open Subject Curriculum (${subjectCourses.length} Courses) →`
+                          : `Open "${subjectCourses[0].title}" Curriculum →`}
                       </button>
                     </div>
                   </div>

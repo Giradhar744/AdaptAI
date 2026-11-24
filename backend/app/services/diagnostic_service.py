@@ -1,13 +1,12 @@
 from typing import List, Optional
-from datetime import datetime, timezone
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, desc
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from app.db.models.identity import User, Student, DisabilityProfile
 from app.db.models.content import Course
-from app.db.models.reference import AgeBand, DisabilityType
+from app.db.models.reference import DisabilityType, AgeBand
 from app.db.models.diagnostic import Diagnostic, DiagnosticAnswer
 from app.db.models.practice import Question
 from app.db.models.progress import Enrolment
@@ -49,6 +48,23 @@ class DiagnosticService:
         if current_user.role == "parent" and student.parent_user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot access other student diagnostic.")
 
+        # Guard: Enrollment test can only be taken once upon registration/onboarding; retest is disabled
+        completed_check = await session.execute(
+            select(Diagnostic)
+            .where(
+                and_(
+                    Diagnostic.student_id == student.id,
+                    Diagnostic.recommended_course_id.is_not(None),
+                )
+            )
+            .limit(1)
+        )
+        if completed_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Enrollment test has already been completed. Retests are disabled.",
+            )
+
         disability_codes = [d.disability_type.code for d in student.disabilities if d.disability_type]
         age_band_code = student.age_band.code if student.age_band else "11-15"
 
@@ -58,82 +74,53 @@ class DiagnosticService:
             dt_res = await session.execute(select(DisabilityType).limit(1))
             first_disability_id = dt_res.scalar_one().id
 
+        import uuid
+        diag_id = str(uuid.uuid4())
         diagnostic = Diagnostic(
+            id=diag_id,
             student_id=student.id,
             age_at_test=student.age,
             disability_type_id=first_disability_id,
             score=0.0,
-            max_score=0.0,
+            max_score=10.0,
         )
         session.add(diagnostic)
-        await session.flush()
 
-        # Invoke DiagnosticPlacementAgent via MCP router
-        ctx = RequestContext(
-            user_id=current_user.id,
-            role=current_user.role,
-            student_id=student.id,
-            disability_types=disability_codes,
-            age_band=age_band_code,
-        )
-        decision = Decision(intent="placement_diagnostic")
-
-        agent_responses = await MCPRouter.route(
-            ctx,
-            decision,
-            payload={
-                "sub_action": "generate_questions",
-                "age": student.age,
-                "min_age": student.age_band.min_age if student.age_band else 11,
-                "max_age": student.age_band.max_age if student.age_band else 15,
-                "num_questions": 4,
-            },
-        )
-
-        questions_data = []
-        for r in agent_responses:
-            if r.agent_name == "diagnostic_placement" and r.status == "success":
-                questions_data = r.data.get("questions", [])
-                break
-
-        if not questions_data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Diagnostic agent failed to generate questions.",
-            )
+        # Load fixed 10 questions across English, Science, Basic Reasoning, Maths, and Hindi
+        from app.db.diagnostic_questions import FIXED_DIAGNOSTIC_QUESTIONS
 
         created_questions: List[QuestionSchema] = []
-        for q_data in questions_data:
+        for q_data in FIXED_DIAGNOSTIC_QUESTIONS:
+            q_id = str(uuid.uuid4())
             q_row = Question(
+                id=q_id,
                 parent_type="diagnostic",
-                parent_id=diagnostic.id,
+                parent_id=diag_id,
                 prompt=q_data["prompt"],
                 question_type="mcq",
                 options=q_data["options"],
                 correct_answer=q_data["correct_answer"],
                 explanation=q_data.get("explanation"),
-                difficulty=q_data.get("difficulty", "easy"),
+                difficulty=q_data.get("difficulty", "medium"),
             )
             session.add(q_row)
-            await session.flush()
 
             created_questions.append(
                 QuestionSchema(
-                    id=q_row.id,
-                    prompt=q_row.prompt,
-                    question_type=q_row.question_type,
-                    options=[QuestionOption(**opt) for opt in q_row.options],
-                    correct_answer=CorrectAnswer(**q_row.correct_answer),
-                    explanation=q_row.explanation,
-                    difficulty=q_row.difficulty,
+                    id=q_id,
+                    prompt=q_data["prompt"],
+                    question_type="mcq",
+                    options=[QuestionOption(**opt) for opt in q_data["options"]],
+                    correct_answer=CorrectAnswer(**q_data["correct_answer"]),
+                    explanation=q_data.get("explanation"),
+                    difficulty=q_data.get("difficulty", "medium"),
                 )
             )
 
-        diagnostic.max_score = float(len(created_questions))
         await session.commit()
 
         return DiagnosticStartResponse(
-            diagnostic_id=diagnostic.id,
+            diagnostic_id=diag_id,
             student_id=student.id,
             age=student.age,
             age_band_label=student.age_band.label if student.age_band else age_band_code,
@@ -247,6 +234,19 @@ class DiagnosticService:
         rec_course_id = placement_data.get("recommended_course_id")
         rec_course_title = placement_data.get("recommended_course_title")
         diagnostic.recommended_course_id = rec_course_id
+        rec_age_band = placement_data.get("recommended_age_band", "11-15")
+
+        # Update student's profile age band to match placement batch
+        band_res = await session.execute(
+            select(AgeBand).where(AgeBand.code == rec_age_band)
+        )
+        placed_band = band_res.scalar_one_or_none()
+        if placed_band:
+            student.age_band_id = placed_band.id
+            student.age_band = placed_band
+
+        # Note: Student is NOT automatically enrolled into the recommended course.
+        # The student can accept or decline on the recommendation screen, or enrol later from Explore Courses.
 
         await session.commit()
         await session.refresh(diagnostic)
@@ -258,14 +258,18 @@ class DiagnosticService:
             student_id=student.id,
             score=score,
             max_score=max_score,
-            percentage=percentage,
-            recommended_age_band=placement_data.get("recommended_age_band", "11-15"),
+            percentage=round(percentage, 1),
+            score_percentage=round(percentage, 1),
+            assigned_age_band=rec_age_band,
+            total_questions=int(max_score),
+            correct_count=int(score),
+            recommended_age_band=rec_age_band,
             progression_age_band=placement_data.get("progression_age_band"),
             recommended_course_id=rec_course_id,
             recommended_course_title=rec_course_title,
             recommended_courses=placement_data.get("recommended_courses", []),
             progression_courses=placement_data.get("progression_courses", []),
-            explanation=placement_data.get("explanation", "Recommended course based on placement assessment score."),
+            explanation=placement_data.get("explanation", "Recommended course based on enrollment test score."),
             strengths=placement_data.get("strengths", []),
             focus_areas=placement_data.get("focus_areas", []),
         )
@@ -279,7 +283,12 @@ class DiagnosticService:
         # Query most recent submitted diagnostic for this student
         stmt = (
             select(Diagnostic)
-            .where(Diagnostic.student_id == student_id)
+            .where(
+                and_(
+                    Diagnostic.student_id == student_id,
+                    Diagnostic.recommended_course_id.is_not(None),
+                )
+            )
             .order_by(desc(Diagnostic.created_at))
             .options(
                 selectinload(Diagnostic.student).selectinload(Student.age_band),
@@ -290,23 +299,49 @@ class DiagnosticService:
         res = await session.execute(stmt)
         diagnostic = res.scalar_one_or_none()
         if not diagnostic:
+            # Fallback to any diagnostic for student
+            stmt_fallback = (
+                select(Diagnostic)
+                .where(Diagnostic.student_id == student_id)
+                .order_by(desc(Diagnostic.created_at))
+                .options(
+                    selectinload(Diagnostic.student).selectinload(Student.age_band),
+                    selectinload(Diagnostic.recommended_course),
+                )
+                .limit(1)
+            )
+            res_fallback = await session.execute(stmt_fallback)
+            diagnostic = res_fallback.scalar_one_or_none()
+
+        if not diagnostic:
             return None
 
         percentage = (diagnostic.score / diagnostic.max_score * 100) if diagnostic.max_score > 0 else 0.0
 
-        # Map to placement thresholds
         if percentage < 50.0:
             target_band = "7-10"
-            progression_band = "11-15"
-            target_label = "Below 11 years"
         elif percentage <= 75.0:
             target_band = "11-15"
-            progression_band = "15-20"
-            target_label = "11–15 years"
         else:
             target_band = "15-20"
-            progression_band = None
-            target_label = "Above 15 years"
+
+        # Auto-heal / sync student.age_band_id in DB if it was out of sync with test placement
+        band_stmt = select(AgeBand).where(AgeBand.code == target_band)
+        band_res = await session.execute(band_stmt)
+        placed_band = band_res.scalar_one_or_none()
+        if placed_band and diagnostic.student and diagnostic.student.age_band_id != placed_band.id:
+            diagnostic.student.age_band_id = placed_band.id
+            diagnostic.student.age_band = placed_band
+            await session.commit()
+
+        BATCH_RANKS = {
+            "7-10": 1,
+            "11-15": 2,
+            "15-20": 3,
+            "16-20": 3,
+        }
+        target_rank = BATCH_RANKS.get(target_band, 2)
+        progression_band = None
 
         # Query candidate published courses
         courses_res = await session.execute(
@@ -326,25 +361,40 @@ class DiagnosticService:
             for c in courses_res.scalars().all()
         ]
 
-        rec_courses = [c for c in all_courses if c.get("age_band_code") == target_band]
-        prog_courses = [c for c in all_courses if c.get("age_band_code") == progression_band] if progression_band else []
-        rec_title = diagnostic.recommended_course.title if diagnostic.recommended_course else (rec_courses[0]["title"] if rec_courses else None)
-        rec_id = diagnostic.recommended_course_id or (rec_courses[0]["id"] if rec_courses else None)
+        # Courses of student's batch and all higher batches
+        rec_courses = [
+            c for c in all_courses
+            if BATCH_RANKS.get(c.get("age_band_code"), 1) >= target_rank
+        ]
+        exact_courses = [c for c in all_courses if c.get("age_band_code") == target_band]
+        rec_title = diagnostic.recommended_course.title if diagnostic.recommended_course else (
+            exact_courses[0]["title"] if exact_courses else (rec_courses[0]["title"] if rec_courses else None)
+        )
+        rec_id = diagnostic.recommended_course_id or (
+            exact_courses[0]["id"] if exact_courses else (rec_courses[0]["id"] if rec_courses else None)
+        )
 
         return DiagnosticResultResponse(
             diagnostic_id=diagnostic.id,
             student_id=diagnostic.student_id,
             score=diagnostic.score,
             max_score=diagnostic.max_score,
-            percentage=percentage,
+            percentage=round(percentage, 1),
+            score_percentage=round(percentage, 1),
+            assigned_age_band=target_band,
+            total_questions=int(diagnostic.max_score),
+            correct_count=int(diagnostic.score),
             recommended_age_band=target_band,
             progression_age_band=progression_band,
             recommended_course_id=rec_id,
             recommended_course_title=rec_title,
             recommended_courses=rec_courses,
-            progression_courses=prog_courses,
-            explanation=f"Based on your placement score of {diagnostic.score:.0f}/{diagnostic.max_score:.0f} ({percentage:.0f}%), your recommended level is {target_label} ({target_band}).",
-            strengths=["Completed initial placement evaluation"],
+            progression_courses=[],
+            explanation=(
+                f"Based on your enrollment test score of {diagnostic.score:.0f}/{diagnostic.max_score:.0f} ({percentage:.0f}%), "
+                f"your recommended learning batch is {'Batch Alpha' if target_band == '7-10' else ('Batch Gamma' if target_band in ['15-20', '16-20'] else 'Batch Beta')}."
+            ),
+            strengths=["Completed initial enrollment evaluation"],
             focus_areas=["Ready for self-paced practice with accessible hints"],
         )
 
@@ -367,19 +417,56 @@ class DiagnosticService:
         if not diagnostic:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnostic not found.")
 
-        rec_title = diagnostic.recommended_course.title if diagnostic.recommended_course else None
         percentage = (diagnostic.score / diagnostic.max_score * 100) if diagnostic.max_score > 0 else 0.0
+
+        if percentage < 50.0:
+            target_band = "7-10"
+        elif percentage <= 75.0:
+            target_band = "11-15"
+        else:
+            target_band = "15-20"
+
+        if not diagnostic.recommended_course_id:
+            courses_res = await session.execute(
+                select(Course)
+                .where(Course.is_published.is_(True))
+                .options(selectinload(Course.age_band))
+            )
+            candidate_courses = courses_res.scalars().all()
+            matched = [c for c in candidate_courses if c.age_band and c.age_band.code == target_band]
+            selected = matched[0] if matched else (candidate_courses[0] if candidate_courses else None)
+            if selected:
+                diagnostic.recommended_course_id = selected.id
+                await session.commit()
+                # Reload diagnostic with recommended_course loaded
+                stmt_reload = (
+                    select(Diagnostic)
+                    .where(Diagnostic.id == diagnostic_id)
+                    .options(
+                        selectinload(Diagnostic.student).selectinload(Student.age_band),
+                        selectinload(Diagnostic.recommended_course),
+                    )
+                )
+                diagnostic = (await session.execute(stmt_reload)).scalar_one()
+
+        rec_title = diagnostic.recommended_course.title if diagnostic.recommended_course else None
 
         return DiagnosticResultResponse(
             diagnostic_id=diagnostic.id,
             student_id=diagnostic.student_id,
             score=diagnostic.score,
             max_score=diagnostic.max_score,
-            percentage=percentage,
+            percentage=round(percentage, 1),
+            score_percentage=round(percentage, 1),
+            assigned_age_band=target_band,
+            total_questions=int(diagnostic.max_score),
+            correct_count=int(diagnostic.score),
+            recommended_age_band=target_band,
+            progression_age_band=None,
             recommended_course_id=diagnostic.recommended_course_id,
             recommended_course_title=rec_title,
-            explanation=f"Diagnostic score: {diagnostic.score}/{diagnostic.max_score}. Recommended placement for age band.",
-            strengths=["Completed initial placement evaluation"],
+            explanation=f"Diagnostic score: {diagnostic.score:.0f}/{diagnostic.max_score:.0f} ({percentage:.0f}%). Recommended learning batch: {'Batch Alpha' if target_band == '7-10' else ('Batch Gamma' if target_band in ['15-20', '16-20'] else 'Batch Beta')}.",
+            strengths=["Completed initial enrollment evaluation"],
             focus_areas=["Ready to begin guided lessons and practice"],
         )
 

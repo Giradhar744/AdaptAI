@@ -58,7 +58,7 @@ class CourseService:
             age_band_id=age_band.id,
             description=req.description,
             fee=req.fee,
-            is_published=False,
+            is_published=req.is_published if req.is_published is not None else False,
         )
         session.add(course)
         await session.commit()

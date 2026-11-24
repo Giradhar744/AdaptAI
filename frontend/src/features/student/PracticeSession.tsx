@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { BehaviourTracker, type StruggleAssessmentEvent } from '../../instrumentation/tracker';
+import { LoadingScreen } from '../../components/LoadingScreen';
 
 export interface PracticeQuestion {
   id: string;
@@ -790,6 +791,23 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
           )}
         </div>
       </div>
+
+      {/* Loading Hint Indicator */}
+      {loadingHint && (
+        <div style={{ marginBottom: 'var(--space-6)' }}>
+          <LoadingScreen
+            title="Generating Helpful Audio Clue..."
+            subtitle="Adapting hint explanations and speech cadence to your learning style..."
+            icon="💡"
+            variant="card"
+            steps={[
+              'Analyzing question concept...',
+              'Formulating calm, step-by-step guidance...',
+              'Generating spoken audio explanation...',
+            ]}
+          />
+        </div>
+      )}
 
       {/* Hints Drawer */}
       {hints.length > 0 && (

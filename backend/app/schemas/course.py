@@ -99,6 +99,8 @@ class CourseCreateRequest(BaseModel):
     age_band_code: str = Field(description="Code for target age band: 7-10, 11-15, 15-20")
     description: Optional[str] = None
     fee: float = Field(default=0.0, ge=0.0)
+    is_published: Optional[bool] = Field(default=None, description="Publish status for students")
+
 
 
 class CourseUpdateRequest(BaseModel):

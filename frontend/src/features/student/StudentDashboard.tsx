@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { CoursePurchaseModal } from './CoursePurchaseModal';
+import { LoadingScreen } from '../../components/LoadingScreen';
+import { getStudentGroupName, formatStudentTrack, isCourseVisibleForBatch } from '../../utils/studentGroup';
 
 export interface CourseItem {
   id: string;
@@ -19,12 +21,17 @@ export interface CourseItem {
 }
 
 export interface DiagnosticLatestResult {
-  score_percentage: number;
-  assigned_age_band: string;
-  progression_age_band: string;
-  total_questions: number;
-  correct_count: number;
-  completed_at: string;
+  score?: number;
+  max_score?: number;
+  percentage?: number;
+  score_percentage?: number;
+  assigned_age_band?: string;
+  recommended_age_band?: string;
+  progression_age_band?: string | null;
+  total_questions?: number;
+  correct_count?: number;
+  completed_at?: string;
+  explanation?: string;
 }
 
 interface StudentDashboardProps {
@@ -38,7 +45,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onLaunchDiagnostic,
   onOpenConsentCenter,
 }) => {
-  const { user, token } = useAuth();
+  const { user, token, refreshProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<'explore' | 'my_courses' | 'profile'>('explore');
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
@@ -106,7 +113,56 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       });
       if (res.ok) {
         const data = await res.json();
-        setDiagnosticResult(data);
+        if (data) {
+          const rawPercentage =
+            data.score_percentage !== undefined && data.score_percentage !== null
+              ? data.score_percentage
+              : data.percentage !== undefined && data.percentage !== null
+              ? data.percentage
+              : typeof data.score === 'number' && typeof data.max_score === 'number' && data.max_score > 0
+              ? (data.score / data.max_score) * 100
+              : 0;
+
+          const rawAssignedBand =
+            data.assigned_age_band ||
+            data.recommended_age_band ||
+            user?.age_band ||
+            '11-15';
+
+          const rawCorrect =
+            data.correct_count !== undefined && data.correct_count !== null
+              ? data.correct_count
+              : typeof data.score === 'number'
+              ? Math.round(data.score)
+              : 0;
+
+          const rawTotal =
+            data.total_questions !== undefined && data.total_questions !== null
+              ? data.total_questions
+              : typeof data.max_score === 'number'
+              ? Math.round(data.max_score)
+              : 10;
+
+          setDiagnosticResult({
+            ...data,
+            percentage: Math.round(rawPercentage),
+            score_percentage: Math.round(rawPercentage),
+            assigned_age_band: rawAssignedBand,
+            recommended_age_band: rawAssignedBand,
+            progression_age_band: data.progression_age_band || '',
+            correct_count: rawCorrect,
+            total_questions: rawTotal,
+            score: data.score ?? rawCorrect,
+            max_score: data.max_score ?? rawTotal,
+          });
+
+          // Sync AuthContext profile so top header badge matches placed batch
+          if (refreshProfile && rawAssignedBand) {
+            if (getStudentGroupName(user?.age_band) !== getStudentGroupName(rawAssignedBand)) {
+              refreshProfile();
+            }
+          }
+        }
       }
     } catch {
       // Keep null or defaults
@@ -120,13 +176,28 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   const enrolledCourses = courses.filter((c) => c.is_enrolled);
 
-  // Recommended courses based on student's placement diagnostic or age band
-  const recommendedBand = diagnosticResult?.assigned_age_band || user?.age_band || '11-15';
+  // Active student batch: determined purely by enrollment test performance, not age!
+  const studentBatch = diagnosticResult?.assigned_age_band
+    ? getStudentGroupName(diagnosticResult.assigned_age_band)
+    : user?.age_band
+    ? getStudentGroupName(user.age_band)
+    : null;
 
-  const subjects = ['all', ...Array.from(new Set(courses.map((c) => c.subject)))];
-  const filteredCourses = selectedSubjectFilter === 'all'
-    ? courses
-    : courses.filter((c) => c.subject === selectedSubjectFilter);
+  // Recommended courses base band
+  const recommendedBand = diagnosticResult?.assigned_age_band || user?.age_band || '';
+
+  // Under All Available Courses, show courses of the student's batch and all higher batches
+  // (e.g. A 10-year-old placed into Batch Beta sees Batch Beta and Batch Gamma courses)
+  // If student has not yet taken the enrollment test, all courses are visible.
+  const groupCourses = studentBatch
+    ? courses.filter((c) => isCourseVisibleForBatch(c.age_band_label || c.age_band_code, studentBatch))
+    : courses;
+
+  const subjects = ['all', ...Array.from(new Set(groupCourses.map((c) => c.subject)))];
+  const activeSubject = subjects.includes(selectedSubjectFilter) ? selectedSubjectFilter : 'all';
+  const filteredCourses = activeSubject === 'all'
+    ? groupCourses
+    : groupCourses.filter((c) => c.subject === activeSubject);
 
   return (
     <div>
@@ -206,7 +277,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ============================================================== */}
       {activeTab === 'explore' && (
         <div>
-          {/* Diagnostic Placement Recommendation Card */}
+          {/* Diagnostic Enrollment Recommendation Card */}
           {diagnosticResult ? (
             <div
               className="card"
@@ -219,23 +290,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
                 <div>
                   <span className="brand-badge" style={{ background: '#0d9488', color: '#ffffff', marginBottom: 'var(--space-2)' }}>
-                    ✨ Recommended For Your Level
+                    ✨ Recommended For You
                   </span>
                   <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 'var(--space-1) 0' }}>
-                    Personalized based on your Placement Score ({diagnosticResult.score_percentage}%)
+                    Personalized based on your Enrollment Test Score ({diagnosticResult.score_percentage ?? diagnosticResult.percentage ?? 0}%)
                   </h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-                    We recommend courses suited for <strong>Ages {diagnosticResult.assigned_age_band}</strong>, with pathway into <strong>Ages {diagnosticResult.progression_age_band}</strong>.
+                    We recommend best suited courses just for you.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={onLaunchDiagnostic}
-                  style={{ fontSize: '0.875rem', padding: '6px 14px' }}
-                >
-                  Retake Placement Test ↻
-                </button>
               </div>
             </div>
           ) : (
@@ -254,10 +317,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             >
               <div>
                 <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 var(--space-1) 0' }}>
-                  🎯 Want Personalized Course Recommendations?
+                  🎯 Want Personalized Course Recommendations & Batch Enrollment?
                 </h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-                  Take a quick 5-question placement test so we can tailor courses and hints to your exact learning level.
+                  Take a calm enrollment test to determine your learning batch (Batch Alpha, Beta, or Gamma) based entirely on your performance, not your age!
                 </p>
               </div>
               <button
@@ -266,7 +329,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 onClick={onLaunchDiagnostic}
                 style={{ padding: '8px 16px', fontSize: '0.875rem' }}
               >
-                Start Placement Test →
+                Start Enrollment Test →
               </button>
             </div>
           )}
@@ -298,9 +361,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
 
           {loadingCourses ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-              <p style={{ color: 'var(--text-secondary)' }}>Loading courses...</p>
-            </div>
+            <LoadingScreen
+              preset="loadingCurriculum"
+              title="Loading Your Courses & Subjects..."
+              subtitle="Fetching tailored courses matching your age band and accommodations..."
+              variant="card"
+            />
           ) : filteredCourses.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
               <p style={{ color: 'var(--text-secondary)' }}>No courses match your filter.</p>
@@ -344,7 +410,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                         <span className="brand-badge">{c.subject}</span>
                         <span className="btn-a11y" style={{ fontSize: '0.75rem' }}>
-                          {c.age_band_label || 'All Ages'}
+                          {formatStudentTrack(c.age_band_label || c.age_band_code)}
                         </span>
                       </div>
 
@@ -506,8 +572,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <strong>{user?.age || 'Not specified'}</strong>
               </div>
               <div>
-                <span style={{ color: 'var(--text-secondary)' }}>Age Group:</span>{' '}
-                <strong>{user?.age_band ? `Ages ${user.age_band}` : 'All Ages'}</strong>
+                <span style={{ color: 'var(--text-secondary)' }}>Batch:</span>{' '}
+                <strong>{studentBatch || 'Pending Enrollment Test'}</strong>
               </div>
               <div>
                 <span style={{ color: 'var(--text-secondary)' }}>Learning Needs:</span>{' '}
@@ -516,37 +582,38 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
           </div>
 
-          {/* Diagnostic Placement Card */}
+          {/* Diagnostic Enrollment Card */}
           <div className="card" style={{ marginBottom: 'var(--space-4)', borderLeft: '6px solid var(--primary)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
               <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>
-                🎯 Placement Test Status
+                🎯 Enrollment Test Status
               </h3>
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={onLaunchDiagnostic}
-                style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-              >
-                Retake Test ↻
-              </button>
+              {!diagnosticResult && (
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={onLaunchDiagnostic}
+                  style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
+                >
+                  Take Enrollment Test →
+                </button>
+              )}
             </div>
 
             {diagnosticResult ? (
               <div>
-                <p style={{ fontSize: '0.9375rem', marginBottom: 'var(--space-3)' }}>
-                  Latest score: <strong>{diagnosticResult.score_percentage}%</strong> ({diagnosticResult.correct_count} of {diagnosticResult.total_questions} questions correct).
+                <p style={{ fontSize: '0.9375rem', margin: 0 }}>
+                  Latest score:{' '}
+                  <strong>
+                    {diagnosticResult.score_percentage ?? diagnosticResult.percentage ?? 0}%
+                  </strong>{' '}
+                  ({diagnosticResult.correct_count ?? diagnosticResult.score ?? 0} of{' '}
+                  {diagnosticResult.total_questions ?? diagnosticResult.max_score ?? 10} questions correct).
                 </p>
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  <span className="brand-badge">Current Level: Ages {diagnosticResult.assigned_age_band}</span>
-                  <span className="brand-badge" style={{ background: '#059669', color: '#ffffff' }}>
-                    Next Level: Ages {diagnosticResult.progression_age_band}
-                  </span>
-                </div>
               </div>
             ) : (
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-                You have not completed the placement diagnostic yet. Take it to unlock custom difficulty recommendations!
+                You have not completed the enrollment test yet. Take it to unlock custom difficulty recommendations!
               </p>
             )}
           </div>

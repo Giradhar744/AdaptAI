@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { LoadingScreen } from '../../components/LoadingScreen';
 
 export interface SafeTestQuestion {
   id: string;
@@ -92,6 +93,7 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
   const [secondsRemaining, setSecondsRemaining] = useState(1200); // 20 mins default
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingTest, setIsLoadingTest] = useState(true);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
 
   // Initialize test attempt from API or fallback
@@ -118,6 +120,8 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
       } catch {
         // Use standalone sample fallback
         setAttemptId('sample-att-001');
+      } finally {
+        setIsLoadingTest(false);
       }
     };
     initAttempt();
@@ -212,7 +216,22 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
 
   return (
     <div style={{ maxWidth: '840px', margin: '0 auto', padding: 'var(--space-4) 0' }}>
-      {/* Top Header */}
+      {/* Fullscreen Loading Overlay during Test Evaluation */}
+      {isSubmitting && (
+        <LoadingScreen preset="evaluatingTest" variant="fullscreen" />
+      )}
+
+      {/* Initial Test Loading Screen */}
+      {isLoadingTest ? (
+        <LoadingScreen
+          preset="loadingCurriculum"
+          title="Preparing Your Chapter Test..."
+          subtitle={`Loading chapter test questions for "${chapterTitle}"...`}
+          variant="card"
+        />
+      ) : (
+        <>
+          {/* Top Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
         <button
           type="button"
@@ -432,6 +451,8 @@ export const TimedChapterTest: React.FC<TimedChapterTestProps> = ({
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

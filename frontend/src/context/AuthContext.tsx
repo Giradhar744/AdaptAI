@@ -35,7 +35,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: (overrideToken?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -88,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    if (token && !user) {
+    if (token) {
       fetchProfile(token);
     } else {
       setIsLoading(false);
@@ -155,9 +155,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  const refreshProfile = async () => {
-    if (token) {
-      await fetchProfile(token);
+  const refreshProfile = async (overrideToken?: string) => {
+    const activeToken = overrideToken || token || localStorage.getItem(TOKEN_KEY);
+    if (activeToken) {
+      await fetchProfile(activeToken);
     }
   };
 

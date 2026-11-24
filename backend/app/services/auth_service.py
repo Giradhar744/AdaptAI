@@ -40,23 +40,14 @@ class AuthService:
                     detail="Age is required for student registration.",
                 )
 
-            # Resolve AgeBand based on placement_min_age and placement_max_age
-            # Note: Age 15 is routed to 11-15 (PROJECT.md §15.2)
-            ab_stmt = select(AgeBand).where(
-                and_(
-                    AgeBand.placement_min_age <= req.age,
-                    AgeBand.placement_max_age >= req.age,
-                )
-            )
-            ab_res = await session.execute(ab_stmt)
-            age_band = ab_res.scalar_one_or_none()
-
+            # Student learning batch is NOT assigned by chronological age.
+            # Batches (Batch Alpha, Batch Beta, Batch Gamma) are earned strictly through enrollment test performance.
             student = Student(
                 user_id=user.id,
                 parent_user_id=req.parent_user_id,
                 display_name=display_name,
                 age=req.age,
-                age_band_id=age_band.id if age_band else None,
+                age_band_id=None,
             )
             session.add(student)
             await session.flush()

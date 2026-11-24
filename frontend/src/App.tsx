@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/AuthModal';
+import { LoadingScreen } from './components/LoadingScreen';
 import StudentOnboarding from './features/student/StudentOnboarding';
 import PracticeSession from './features/student/PracticeSession';
 import ConsentDecisionCenter from './features/student/ConsentDecisionCenter';
@@ -10,15 +11,8 @@ import CourseStudyRoom from './features/student/CourseStudyRoom';
 import TeacherDashboard from './features/teacher/TeacherDashboard';
 import { TeacherCoursesManager } from './features/teacher/TeacherCoursesManager';
 import { CourseAuthoringModal } from './features/teacher/CourseAuthoringModal';
-import heroImg from './assets/hero.png';
-
-interface HealthData {
-  status: string;
-  environment: string;
-  version: string;
-  providers: Record<string, string>;
-  agents: Record<string, boolean>;
-}
+import heroImg from './assets/hero_learning.jpg';
+import { getStudentGroupName } from './utils/studentGroup';
 
 export type AppView =
   | 'home'
@@ -45,8 +39,6 @@ const AppContent: React.FC = () => {
   const [dyslexicFont, setDyslexicFont] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
   const [fontScale, setFontScale] = useState(1);
-  const [health, setHealth] = useState<HealthData | null>(null);
-  const [loading, setLoading] = useState(true);
 
   // Active study context
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
@@ -56,11 +48,15 @@ const AppContent: React.FC = () => {
   const [activeCourseTitle, setActiveCourseTitle] = useState<string | null>(null);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [isTeacherAuthoringOpen, setIsTeacherAuthoringOpen] = useState(false);
+  const [teacherRefreshTrigger, setTeacherRefreshTrigger] = useState(0);
+  const [authoringAgeBand, setAuthoringAgeBand] = useState<string>('11-15');
+  const [teacherTargetAgeBand, setTeacherTargetAgeBand] = useState<string | undefined>(undefined);
 
   // Auth modal state
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authDefaultMode, setAuthDefaultMode] = useState<'login' | 'register'>('login');
   const [authDefaultRole, setAuthDefaultRole] = useState<'student' | 'teacher'>('student');
+  const [pendingAutoStartTest, setPendingAutoStartTest] = useState(false);
 
   const getInitialView = (): AppView => {
     const hash = window.location.hash.replace(/^#\/?/, '').trim();
@@ -133,35 +129,6 @@ const AppContent: React.FC = () => {
     document.documentElement.style.setProperty('--font-scale', fontScale.toString());
   }, [dyslexicFont, highContrast, fontScale]);
 
-  useEffect(() => {
-    // Check backend health status
-    fetch('/api/v1/health')
-      .then((res) => {
-        if (!res.ok) throw new Error('API offline');
-        return res.json();
-      })
-      .then((data: HealthData) => {
-        setHealth(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setHealth({
-          status: 'ready (dev)',
-          environment: 'development',
-          version: '0.1.0',
-          providers: { llm: 'fast', tts: 'browser-speech', stt: 'browser-stt', video: 'direct' },
-          agents: {
-            diagnostic: true,
-            zpd_hint: true,
-            content_gen: true,
-            struggle_detection: true,
-            consent_trust: true,
-            teacher_copilot: true,
-          },
-        });
-        setLoading(false);
-      });
-  }, []);
 
   const openAuth = (mode: 'login' | 'register', role: 'student' | 'teacher') => {
     setAuthDefaultMode(mode);
@@ -238,13 +205,6 @@ const AppContent: React.FC = () => {
           </div>
 
           <div className="nav-actions">
-            <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginRight: 'var(--space-2)' }}>
-              Status:{' '}
-              <strong style={{ color: 'var(--primary)' }}>
-                {loading ? 'Checking...' : health?.status}
-              </strong>
-            </div>
-
             {isAuthenticated && user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <span className="user-pill">
@@ -282,7 +242,7 @@ const AppContent: React.FC = () => {
           </div>
         </header>
 
-        {/* Breadcrumb & Quick Back Navigation for sub-views */}
+        {/* Breadcrumb navigation for sub-views */}
         {activeView !== 'home' && (
           <nav
             aria-label="Breadcrumb navigation"
@@ -291,29 +251,16 @@ const AppContent: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: 'var(--space-2)',
+              fontSize: '0.875rem',
+              color: 'var(--text-secondary)',
             }}
           >
-            <button
-              type="button"
-              className="btn-a11y"
-              onClick={handleBack}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 600,
-                fontSize: '0.875rem',
-                cursor: 'pointer',
-              }}
-            >
-              <span aria-hidden="true">←</span> Back to Dashboard
-            </button>
-            <span style={{ color: 'var(--text-secondary)' }}>/</span>
+            <span>Dashboard</span>
+            <span aria-hidden="true">/</span>
             <span
               style={{
-                fontSize: '0.875rem',
-                color: 'var(--text-secondary)',
                 textTransform: 'capitalize',
+                fontWeight: 600,
               }}
             >
               {activeView.replace(/_/g, ' ')}
@@ -323,16 +270,22 @@ const AppContent: React.FC = () => {
 
         {/* View Routing */}
         {isLoading && !user ? (
-          <div style={{ textAlign: 'center', padding: 'var(--space-12) var(--space-4)' }}>
-            <div className="brand-badge" style={{ display: 'inline-block', marginBottom: 'var(--space-3)' }}>
-              Restoring Session...
-            </div>
-            <p style={{ color: 'var(--text-secondary)' }}>
-              Connecting securely to your AdaptAI learning space...
-            </p>
+          <div style={{ padding: 'var(--space-8) var(--space-4)' }}>
+            <LoadingScreen
+              preset="authLogin"
+              title="Connecting to AdaptAI Space..."
+              subtitle="Restoring your session securely and configuring sensory accommodations..."
+              variant="card"
+            />
           </div>
         ) : activeView === 'student_onboarding' ? (
-          <StudentOnboarding onBackToHome={handleBack} />
+          <StudentOnboarding
+            onBackToHome={() => {
+              setPendingAutoStartTest(false);
+              handleBack();
+            }}
+            autoStart={pendingAutoStartTest}
+          />
         ) : activeView === 'practice_session' ? (
           <PracticeSession
             dppId={activeDppId || undefined}
@@ -395,8 +348,18 @@ const AppContent: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  {user.age && <span className="btn-a11y">Age: {user.age}</span>}
-                  {user.age_band && <span className="btn-a11y">Age Group: {user.age_band}</span>}
+                  {user.role === 'student' ? (
+                    user.age_band ? (
+                      <span className="btn-a11y">{getStudentGroupName(user.age_band)}</span>
+                    ) : (
+                      <span className="btn-a11y" style={{ opacity: 0.85 }}>Enrollment Pending</span>
+                    )
+                  ) : (
+                    <>
+                      {user.age && <span className="btn-a11y">Age: {user.age}</span>}
+                      {user.age_band && <span className="btn-a11y">Age Group: {user.age_band}</span>}
+                    </>
+                  )}
                   {user.disabilities && user.disabilities.length > 0 && (
                     <span className="brand-badge" style={{ padding: '6px 12px' }}>
                       Learning Style: {user.disabilities[0].label}
@@ -453,6 +416,8 @@ const AppContent: React.FC = () => {
 
                 {/* All Courses & Subject Management Section */}
                 <TeacherCoursesManager
+                  refreshTrigger={teacherRefreshTrigger}
+                  targetAgeBand={teacherTargetAgeBand}
                   onLaunchPractice={(dppId, chapterId, chapterTitle, courseTitle) => {
                     setActiveDppId(dppId || null);
                     setActiveChapterId(chapterId || null);
@@ -460,7 +425,10 @@ const AppContent: React.FC = () => {
                     setActiveCourseTitle(courseTitle || null);
                     navigateTo('practice_session');
                   }}
-                  onOpenCreateCourse={() => setIsTeacherAuthoringOpen(true)}
+                  onOpenCreateCourse={(defaultAgeBand) => {
+                    if (defaultAgeBand) setAuthoringAgeBand(defaultAgeBand);
+                    setIsTeacherAuthoringOpen(true);
+                  }}
                   onOpenAnalytics={(courseId) => {
                     setActiveCourseId(courseId);
                     navigateTo('teacher_dashboard');
@@ -470,10 +438,17 @@ const AppContent: React.FC = () => {
                 {/* Course Authoring Modal */}
                 <CourseAuthoringModal
                   isOpen={isTeacherAuthoringOpen}
-                  onClose={() => setIsTeacherAuthoringOpen(false)}
-                  onCourseCreated={(newCourseId) => {
-                    setActiveCourseId(newCourseId);
+                  initialAgeBandCode={authoringAgeBand}
+                  onClose={() => {
                     setIsTeacherAuthoringOpen(false);
+                    setTeacherRefreshTrigger((prev) => prev + 1);
+                  }}
+                  onCourseCreated={(newCourseId, createdAgeBand) => {
+                    setActiveCourseId(newCourseId);
+                    if (createdAgeBand) {
+                      setTeacherTargetAgeBand(createdAgeBand);
+                    }
+                    setTeacherRefreshTrigger((prev) => prev + 1);
                   }}
                 />
               </div>
@@ -507,26 +482,6 @@ const AppContent: React.FC = () => {
                   AdaptAI gives students a calm, friendly place to learn with courses created by real teachers. Specially designed for learners with Dyslexia, ADHD, Autism, and unique learning paces.
                 </p>
 
-                <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-6)' }}>
-                  <button
-                    type="button"
-                    className="button-primary"
-                    onClick={() => openAuth('register', 'student')}
-                    style={{ padding: '12px 24px', fontSize: '1rem' }}
-                  >
-                    🎓 Student & Parent Sign Up →
-                  </button>
-
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={() => openAuth('login', 'teacher')}
-                    style={{ padding: '12px 24px', fontSize: '1rem' }}
-                  >
-                    👩‍🏫 Teacher Sign In →
-                  </button>
-                </div>
-
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                   <span className="btn-a11y">✓ Calm, Sensory-Friendly Colors</span>
                   <span className="btn-a11y">✓ Spoken Audio & Text Hints</span>
@@ -538,7 +493,7 @@ const AppContent: React.FC = () => {
               <div className="hero-visual">
                 <img
                   src={heroImg}
-                  alt="AdaptAI Adaptive Multi-Layered Learning Platform Illustration"
+                  alt="AdaptAI - Inclusive AI-Powered Learning with Audio Hints, Interactive Lessons, and Alpha Beta Gamma Tracks"
                   className="hero-img"
                 />
               </div>
@@ -600,9 +555,9 @@ const AppContent: React.FC = () => {
               <div className="steps-grid">
                 <div className="step-card">
                   <div className="step-number">1</div>
-                  <h3>Quick Placement Test</h3>
+                  <h3>Quick Enrollment Test</h3>
                   <p>
-                    Take a fun, 5-question placement check so we can recommend courses and lessons suited to your exact level.
+                    Take a fun, 5-question enrollment check so we can recommend courses and lessons suited to your exact level.
                   </p>
                 </div>
 
@@ -744,7 +699,7 @@ const AppContent: React.FC = () => {
                       <span className="brand-badge">Students</span>
                     </div>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', marginBottom: 'var(--space-6)' }}>
-                      Access your placement test, enrolled courses, daily practice with spoken hints, and profile.
+                      Access your enrollment test, enrolled courses, daily practice with spoken hints, and profile.
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -826,12 +781,23 @@ const AppContent: React.FC = () => {
       </main>
 
       {/* Global Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        defaultMode={authDefaultMode}
-        defaultRole={authDefaultRole}
-      />
+      {isAuthModalOpen && (
+        <AuthModal
+          key={`${authDefaultMode}-${authDefaultRole}`}
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          defaultMode={authDefaultMode}
+          defaultRole={authDefaultRole}
+          onSuccess={(role, wasRegistration) => {
+            if (role === 'student' && wasRegistration) {
+              setPendingAutoStartTest(true);
+              navigateTo('student_onboarding');
+            } else {
+              navigateTo('home');
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

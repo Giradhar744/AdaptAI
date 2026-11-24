@@ -1,7 +1,11 @@
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import String, Boolean, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models.content import Course
+    from app.db.models.reference import AgeBand, DisabilityType
 
 
 class User(Base, UUIDMixin, TimestampMixin):

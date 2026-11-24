@@ -1,8 +1,12 @@
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime
 from sqlalchemy import String, Integer, Text, Boolean, DateTime, JSON, ForeignKey, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models.content import Topic, Lecture, Chapter
+    from app.db.models.identity import Student
 
 
 class DPP(Base, UUIDMixin, TimestampMixin):

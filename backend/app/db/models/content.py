@@ -1,7 +1,11 @@
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import String, Integer, Text, Boolean, ForeignKey, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models.identity import Teacher
+    from app.db.models.reference import AgeBand
 
 
 class Course(Base, UUIDMixin, TimestampMixin):

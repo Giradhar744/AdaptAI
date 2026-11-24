@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { LoadingScreen } from '../../components/LoadingScreen';
 
 interface CourseAuthoringModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCourseCreated: (courseId: string) => void;
+  onCourseCreated: (courseId: string, ageBandCode?: string) => void;
+  initialAgeBandCode?: string;
 }
 
 interface QuestionItem {
@@ -20,6 +22,7 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
   isOpen,
   onClose,
   onCourseCreated,
+  initialAgeBandCode,
 }) => {
   const { token } = useAuth();
   const [step, setStep] = useState<'create_course' | 'create_chapter' | 'add_lecture' | 'generate_content' | 'review_questions'>('create_course');
@@ -27,10 +30,33 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
   // Course fields
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('Science');
-  const [ageBandCode, setAgeBandCode] = useState('11-15');
+  const [ageBandCode, setAgeBandCode] = useState(initialAgeBandCode || '11-15');
   const [description, setDescription] = useState('');
   const [fee, setFee] = useState(0);
   const [courseId, setCourseId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setStep('create_course');
+      setTitle('');
+      setDescription('');
+      setSubject('Science');
+      setAgeBandCode(initialAgeBandCode || '11-15');
+      setFee(0);
+      setCourseId(null);
+      setChapterTitle('');
+      setChapterId(null);
+      setChaptersList([]);
+      setLectureTitle('');
+      setLectureDescription('');
+      setLecturesList([]);
+      setSelectedLectureId(null);
+      setGeneratedDppId(null);
+      setQuestions([]);
+      setStatusMsg(null);
+      setErrorMsg(null);
+    }
+  }, [isOpen, initialAgeBandCode]);
 
   // Chapter fields
   const [chapterTitle, setChapterTitle] = useState('');
@@ -93,6 +119,8 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
       const created = await res.json();
       setCourseId(created.id);
       setStatusMsg(`Course "${created.title}" successfully created!`);
+      // Immediately notify parent component so it updates curriculum in background
+      onCourseCreated(created.id, ageBandCode);
       setStep('create_chapter');
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -232,7 +260,7 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
       setStatusMsg(`AI generated ${result.questions?.length || numQuestions} questions! Review and edit below before publishing.`);
       setStep('review_questions');
       if (courseId) {
-        onCourseCreated(courseId);
+        onCourseCreated(courseId, ageBandCode);
       }
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -355,7 +383,10 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
           <button
             type="button"
             className="btn-a11y"
-            onClick={onClose}
+            onClick={() => {
+              if (courseId) onCourseCreated(courseId, ageBandCode);
+              onClose();
+            }}
             aria-label="Close authoring wizard"
             style={{ fontSize: '1.25rem', padding: '4px 8px' }}
           >
@@ -363,8 +394,31 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
           </button>
         </div>
 
-        {/* Step Progression Bar */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
+        {loading ? (
+          <div style={{ padding: 'var(--space-6) 0' }}>
+            <LoadingScreen
+              preset={step === 'generate_content' ? 'aiGenerating' : 'savingData'}
+              title={
+                step === 'generate_content'
+                  ? `AI Generating ${generationType === 'dpp' ? 'Daily Practice Problems' : 'Chapter Test'}...`
+                  : step === 'create_course'
+                  ? 'Saving Course to Database...'
+                  : step === 'create_chapter'
+                  ? 'Saving Chapter to Database...'
+                  : 'Saving Video Lesson to Database...'
+              }
+              subtitle={
+                step === 'generate_content'
+                  ? 'Our pedagogical AI is crafting 4-choice questions, difficulty pacing, and hint clues...'
+                  : 'Syncing curriculum structure and syllabus safely with the database...'
+              }
+              variant="card"
+            />
+          </div>
+        ) : (
+          <>
+            {/* Step Progression Bar */}
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
           {[
             { id: 'create_course', label: '1. Course Info' },
             { id: 'create_chapter', label: '2. Chapter' },
@@ -558,13 +612,25 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--space-6)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-6)', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               <button type="button" className="button-secondary" onClick={() => setStep('create_course')}>
                 ← Back
               </button>
-              <button type="submit" className="button-primary" disabled={loading || !chapterTitle}>
-                {loading ? 'Saving...' : 'Save Chapter & Add Lesson →'}
-              </button>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => {
+                    if (courseId) onCourseCreated(courseId, ageBandCode);
+                    onClose();
+                  }}
+                >
+                  ✓ Done (View in Curriculum)
+                </button>
+                <button type="submit" className="button-primary" disabled={loading || !chapterTitle}>
+                  {loading ? 'Saving...' : 'Save Chapter & Add Lesson →'}
+                </button>
+              </div>
             </div>
           </form>
         )}
@@ -656,11 +722,21 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               <button type="button" className="button-secondary" onClick={() => setStep('create_chapter')}>
                 ← Back
               </button>
               <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => {
+                    if (courseId) onCourseCreated(courseId, ageBandCode);
+                    onClose();
+                  }}
+                >
+                  ✓ Done (View in Curriculum)
+                </button>
                 <button
                   type="button"
                   className="button-secondary"
@@ -797,13 +873,25 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               <button type="button" className="button-secondary" onClick={() => setStep('add_lecture')}>
                 ← Back
               </button>
-              <button type="submit" className="button-primary" disabled={loading || !topicPrompt}>
-                {loading ? 'AI Generating Pedagogical Questions...' : '✨ Generate with AI Studio →'}
-              </button>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => {
+                    if (courseId) onCourseCreated(courseId, ageBandCode);
+                    onClose();
+                  }}
+                >
+                  ✓ Done (View in Curriculum)
+                </button>
+                <button type="submit" className="button-primary" disabled={loading || !topicPrompt}>
+                  {loading ? 'AI Generating Pedagogical Questions...' : '✨ Generate with AI Studio →'}
+                </button>
+              </div>
             </div>
           </form>
         )}
@@ -988,7 +1076,7 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
                 type="button"
                 className="button-primary"
                 onClick={() => {
-                  if (courseId) onCourseCreated(courseId);
+                  if (courseId) onCourseCreated(courseId, ageBandCode);
                   onClose();
                 }}
               >
@@ -996,6 +1084,8 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
               </button>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

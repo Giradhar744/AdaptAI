@@ -27,6 +27,10 @@ class DiagnosticResultResponse(BaseModel):
     score: float
     max_score: float
     percentage: float
+    score_percentage: Optional[float] = None
+    assigned_age_band: Optional[str] = None
+    total_questions: Optional[int] = None
+    correct_count: Optional[int] = None
     recommended_age_band: str = "11-15"
     progression_age_band: Optional[str] = None
     recommended_course_id: Optional[str] = None

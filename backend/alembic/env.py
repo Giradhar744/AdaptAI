@@ -16,8 +16,8 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Use DATABASE_URL from our app config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_SYNC_URL if "sqlite" in settings.DATABASE_URL else settings.DATABASE_URL)
+# Use DATABASE_URL from our app config (Supabase PostgreSQL)
+config.set_main_option("sqlalchemy.url", settings.DATABASE_SYNC_URL or settings.DATABASE_URL)
 
 
 def run_migrations_offline() -> None:

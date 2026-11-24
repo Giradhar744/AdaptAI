@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { CourseAuthoringModal } from './CourseAuthoringModal';
+import { LoadingScreen } from '../../components/LoadingScreen';
 
 export interface CourseRatingData {
   course_id: string;
@@ -212,9 +213,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       />
 
       {loading && (
-        <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          Loading course performance metrics and student insights...
-        </div>
+        <LoadingScreen
+          preset="loadingCurriculum"
+          title="Loading Course Analytics & Student Insights..."
+          subtitle="Connecting to educator database to compile mastery scores and course ratings..."
+          variant="card"
+        />
       )}
 
       {!loading && analytics && (

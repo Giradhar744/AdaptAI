@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { LoadingScreen } from '../../components/LoadingScreen';
+import { formatStudentTrack } from '../../utils/studentGroup';
 
 interface Lecture {
   id: string;
@@ -191,8 +193,13 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 'var(--space-12) var(--space-4)' }}>
-        <p style={{ color: 'var(--text-secondary)' }}>Opening your course study space...</p>
+      <div style={{ padding: 'var(--space-8) 0' }}>
+        <LoadingScreen
+          preset="loadingCurriculum"
+          title="Opening Course Study Room..."
+          subtitle="Loading chapter lectures, video lessons, and practice materials..."
+          variant="card"
+        />
       </div>
     );
   }
@@ -210,6 +217,15 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
 
   return (
     <div style={{ maxWidth: '1040px', margin: '0 auto', padding: 'var(--space-4) 0' }}>
+      {generatingDpp && (
+        <LoadingScreen
+          preset="aiGenerating"
+          title="AI Creating Practice Questions..."
+          subtitle="Formulating 4-option practice questions based on this video lesson..."
+          variant="fullscreen"
+        />
+      )}
+
       {/* Top Navigation */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
         <button
@@ -235,7 +251,7 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
         }}
       >
         <span className="brand-badge" style={{ marginBottom: 'var(--space-2)' }}>
-          {course.subject} · {course.age_band_label}
+          {course.subject} · {formatStudentTrack(course.age_band_label)}
         </span>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 'var(--space-1) 0 var(--space-2) 0' }}>
           {course.title}
