@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from app.core.security import hash_password, verify_password, create_access_token
-from app.db.models.identity import User, Teacher, Student, DisabilityProfile
+from app.db.models.identity import User, Teacher, Student
 from app.db.models.reference import AgeBand, DisabilityType
 from app.schemas.auth import UserRegisterRequest, UserLoginRequest, TokenResponse, UserProfileResponse, DisabilityInfo
 
@@ -52,18 +52,6 @@ class AuthService:
             session.add(student)
             await session.flush()
 
-            # Record declared disability type if specified
-            if req.disability_type_code:
-                dt_stmt = select(DisabilityType).where(DisabilityType.code == req.disability_type_code)
-                dt_res = await session.execute(dt_stmt)
-                disability_type = dt_res.scalar_one_or_none()
-                if disability_type:
-                    profile = DisabilityProfile(
-                        student_id=student.id,
-                        disability_type_id=disability_type.id,
-                    )
-                    session.add(profile)
-
         await session.commit()
 
         token = create_access_token(subject=user.id, role=user.role)
@@ -96,9 +84,6 @@ class AuthService:
             age = sp.age
             if sp.age_band:
                 age_band_label = sp.age_band.label
-            for d in sp.disabilities:
-                if d.disability_type:
-                    disabilities.append(DisabilityInfo(code=d.disability_type.code, label=d.disability_type.label))
 
         return UserProfileResponse(
             id=user.id,
@@ -121,9 +106,6 @@ class AuthService:
             .options(
                 joinedload(User.teacher_profile),
                 joinedload(User.student_profile).joinedload(Student.age_band),
-                joinedload(User.student_profile)
-                .joinedload(Student.disabilities)
-                .joinedload(DisabilityProfile.disability_type),
             )
         )
         result = await session.execute(stmt)
@@ -161,9 +143,6 @@ class AuthService:
             .options(
                 joinedload(User.teacher_profile),
                 joinedload(User.student_profile).joinedload(Student.age_band),
-                joinedload(User.student_profile)
-                .joinedload(Student.disabilities)
-                .joinedload(DisabilityProfile.disability_type),
             )
         )
         result = await session.execute(stmt)

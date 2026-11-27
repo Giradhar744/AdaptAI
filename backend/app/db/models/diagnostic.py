@@ -15,13 +15,13 @@ class Diagnostic(Base, UUIDMixin, TimestampMixin):
 
     student_id: Mapped[str] = mapped_column(String(36), ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
     age_at_test: Mapped[int] = mapped_column(Integer, nullable=False)
-    disability_type_id: Mapped[str] = mapped_column(String(36), ForeignKey("disability_types.id"), nullable=False)
+    disability_type_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("disability_types.id", ondelete="SET NULL"), nullable=True)
     score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     max_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     recommended_course_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("courses.id", ondelete="SET NULL"), nullable=True)
 
     student: Mapped["Student"] = relationship("Student")
-    disability_type: Mapped["DisabilityType"] = relationship("DisabilityType")
+    disability_type: Mapped[Optional["DisabilityType"]] = relationship("DisabilityType")
     recommended_course: Mapped[Optional["Course"]] = relationship("Course")
     answers: Mapped[List["DiagnosticAnswer"]] = relationship("DiagnosticAnswer", back_populates="diagnostic", cascade="all, delete-orphan")
 

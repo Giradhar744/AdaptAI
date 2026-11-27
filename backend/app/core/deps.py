@@ -62,6 +62,34 @@ async def get_current_user(
     return user
 
 
+async def get_optional_current_user(
+    token: Optional[str] = Depends(oauth2_scheme),
+    session: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """Dependency that returns the current User if token is provided and valid, otherwise None."""
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        user_id: Optional[str] = payload.get("sub")
+        if user_id is None:
+            return None
+    except jwt.PyJWTError:
+        return None
+
+    stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(
+            selectinload(User.teacher_profile),
+            selectinload(User.student_profile),
+        )
+    )
+    result = await session.execute(stmt)
+    user = result.scalar_one_or_none()
+    return user if user and user.is_active else None
+
+
 def require_role(allowed_roles: List[str]):
     """Returns a dependency ensuring the authenticated user has one of the required roles."""
     async def role_checker(current_user: User = Depends(get_current_user)) -> User:

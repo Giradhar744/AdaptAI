@@ -1,9 +1,9 @@
-# Central export for all SQLAlchemy models
+# Central export for active SQLAlchemy models
 
 from app.db.base import Base, UUIDMixin, TimestampMixin
-from app.db.models.reference import DisabilityType, AgeBand, ScaffoldLevel, PriorityOrder
-from app.db.models.identity import User, Teacher, Student, DisabilityProfile
-from app.db.models.content import Course, Chapter, Topic, Lecture
+from app.db.models.reference import DisabilityType, AgeBand
+from app.db.models.identity import User, Teacher, Student
+from app.db.models.content import Course, Chapter, Lecture
 from app.db.models.practice import (
     DPP,
     Question,
@@ -15,14 +15,6 @@ from app.db.models.practice import (
 )
 from app.db.models.diagnostic import Diagnostic, DiagnosticAnswer
 from app.db.models.progress import Enrolment, ChapterProgress
-from app.db.models.adaptation import (
-    HintEvent,
-    BehaviourSignal,
-    StruggleAssessment,
-    ConsentLedger,
-    StudentPreference,
-    TrustProfile,
-)
 from app.db.models.rating import CourseRating
 
 __all__ = [
@@ -31,15 +23,11 @@ __all__ = [
     "TimestampMixin",
     "DisabilityType",
     "AgeBand",
-    "ScaffoldLevel",
-    "PriorityOrder",
     "User",
     "Teacher",
     "Student",
-    "DisabilityProfile",
     "Course",
     "Chapter",
-    "Topic",
     "Lecture",
     "DPP",
     "Question",
@@ -52,11 +40,5 @@ __all__ = [
     "DiagnosticAnswer",
     "Enrolment",
     "ChapterProgress",
-    "HintEvent",
-    "BehaviourSignal",
-    "StruggleAssessment",
-    "ConsentLedger",
-    "StudentPreference",
-    "TrustProfile",
     "CourseRating",
 ]

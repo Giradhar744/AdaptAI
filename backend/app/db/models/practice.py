@@ -5,19 +5,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.db.models.content import Topic, Lecture, Chapter
+    from app.db.models.content import Lecture, Chapter
     from app.db.models.identity import Student
 
 
 class DPP(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "dpps"
 
-    topic_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("topics.id", ondelete="CASCADE"), nullable=True)
     lecture_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=True)
     generated_by: Mapped[str] = mapped_column(String(20), default="llm", nullable=False)  # llm | teacher
     status: Mapped[str] = mapped_column(String(20), default="published", nullable=False)  # draft | published
 
-    topic: Mapped[Optional["Topic"]] = relationship("Topic")
     lecture: Mapped[Optional["Lecture"]] = relationship("Lecture")
     questions: Mapped[List["Question"]] = relationship(
         "Question",

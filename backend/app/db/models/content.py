@@ -32,19 +32,7 @@ class Chapter(Base, UUIDMixin, TimestampMixin):
     position: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     course: Mapped["Course"] = relationship("Course", back_populates="chapters")
-    topics: Mapped[List["Topic"]] = relationship("Topic", back_populates="chapter", cascade="all, delete-orphan", order_by="Topic.position")
     lectures: Mapped[List["Lecture"]] = relationship("Lecture", back_populates="chapter", cascade="all, delete-orphan")
-
-
-class Topic(Base, UUIDMixin, TimestampMixin):
-    __tablename__ = "topics"
-
-    chapter_id: Mapped[str] = mapped_column(String(36), ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False)
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    position: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    content_text: Mapped[str] = mapped_column(Text, nullable=False)  # Base source content for DPP generation
-
-    chapter: Mapped["Chapter"] = relationship("Chapter", back_populates="topics")
 
 
 class Lecture(Base, UUIDMixin, TimestampMixin):

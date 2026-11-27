@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.db.models.identity import User
-from app.core.deps import get_current_user, require_teacher, require_student
+from app.core.deps import get_current_user, get_optional_current_user, require_teacher, require_student
 from app.schemas.course import (
     CourseCreateRequest,
     CourseUpdateRequest,
@@ -41,12 +41,12 @@ async def create_course(
 async def list_courses(
     mine: bool = Query(default=False, description="If true, returns only courses authored by current teacher"),
     age_band_code: Optional[str] = Query(default=None, description="Filter courses by age band: 7-10, 11-15, 15-20"),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """Lists courses. If mine=true and user is teacher, lists their authored courses."""
     teacher_id = None
-    if mine and current_user.role == "teacher" and current_user.teacher_profile:
+    if mine and current_user and current_user.role == "teacher" and current_user.teacher_profile:
         teacher_id = current_user.teacher_profile.id
 
     return await CourseService.list_courses(
@@ -61,7 +61,7 @@ async def list_courses(
 @router.get("/courses/{id}", response_model=CourseDetailResponse)
 async def get_course(
     id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """Retrieves full details of a course. Video playback URLs are protected and require enrolment."""

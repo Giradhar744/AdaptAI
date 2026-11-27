@@ -8,17 +8,14 @@ from app.db.base import Base
 from app.db.models import (
     DisabilityType,
     AgeBand,
-    ScaffoldLevel,
-    PriorityOrder,
     User,
     Teacher,
     Student,
     Course,
     Chapter,
-    Topic,
+    Lecture,
     ChapterTest,
     TestAttempt,
-    ConsentLedger,
 )
 from app.db.seed_loader import load_seed_data
 
@@ -43,15 +40,13 @@ async def test_seed_loader_populates_reference_data(test_db_session: AsyncSessio
     counts = await load_seed_data(test_db_session)
     assert counts["disability_types"] == 4
     assert counts["age_bands"] == 3
-    assert counts["scaffold_levels"] == 3
-    assert counts["priority_orders"] == 4
 
     # Verify disability types
     res = await test_db_session.execute(select(DisabilityType))
     dt_codes = [dt.code for dt in res.scalars().all()]
     assert set(dt_codes) == {"asd", "adhd", "dyslexia", "other_idd"}
 
-    # Verify age bands and placement logic (15 maps to 11-15, 15-20 maps to 16-20)
+    # Verify age bands
     res = await test_db_session.execute(select(AgeBand).where(AgeBand.code == "11-15"))
     ab_11_15 = res.scalar_one()
     assert ab_11_15.placement_max_age == 15
@@ -60,15 +55,10 @@ async def test_seed_loader_populates_reference_data(test_db_session: AsyncSessio
     ab_15_20 = res.scalar_one()
     assert ab_15_20.placement_min_age == 16
 
-    # Verify priority orders hierarchy
-    res = await test_db_session.execute(select(PriorityOrder).order_by(PriorityOrder.rank))
-    orders = [po.class_name for po in res.scalars().all()]
-    assert orders == ["safety", "consent", "pedagogy", "nudges"]
-
 
 @pytest.mark.asyncio
 async def test_identity_and_course_hierarchy(test_db_session: AsyncSession):
-    """Verifies User, Teacher, Student, Course, Chapter, and Topic models and relations."""
+    """Verifies User, Teacher, Student, Course, Chapter, and Lecture models and relations."""
     await load_seed_data(test_db_session)
 
     # 1. Create Teacher
@@ -84,7 +74,7 @@ async def test_identity_and_course_hierarchy(test_db_session: AsyncSession):
     res = await test_db_session.execute(select(AgeBand).where(AgeBand.code == "11-15"))
     age_band = res.scalar_one()
 
-    # 2. Create Course -> Chapter -> Topic
+    # 2. Create Course -> Chapter -> Lecture
     course = Course(
         teacher_id=teacher.id,
         title="Foundations of Science",
@@ -99,34 +89,34 @@ async def test_identity_and_course_hierarchy(test_db_session: AsyncSession):
     test_db_session.add(chapter)
     await test_db_session.flush()
 
-    topic = Topic(
+    lecture = Lecture(
         chapter_id=chapter.id,
         title="States of Water",
-        position=1,
-        content_text="Water exists in solid (ice), liquid (water), and gas (steam) states.",
+        video_ref="https://www.youtube.com/watch?v=sample123",
+        duration_seconds=300,
     )
-    test_db_session.add(topic)
+    test_db_session.add(lecture)
     await test_db_session.commit()
 
     # Verify retrieval with selectinload for async relationships
     stmt = (
         select(Course)
         .where(Course.id == course.id)
-        .options(selectinload(Course.chapters).selectinload(Chapter.topics))
+        .options(selectinload(Course.chapters).selectinload(Chapter.lectures))
     )
     res = await test_db_session.execute(stmt)
     fetched_course = res.scalar_one()
     assert fetched_course.title == "Foundations of Science"
     assert len(fetched_course.chapters) == 1
-    assert len(fetched_course.chapters[0].topics) == 1
-    assert fetched_course.chapters[0].topics[0].title == "States of Water"
+    assert len(fetched_course.chapters[0].lectures) == 1
+    assert fetched_course.chapters[0].lectures[0].title == "States of Water"
 
 
 @pytest.mark.asyncio
-async def test_first_attempt_rule_and_append_only_ledger(test_db_session: AsyncSession):
-    """Verifies REPORT requirement:
+async def test_first_attempt_rule(test_db_session: AsyncSession):
+    """Verifies:
     - First attempt flag works
-    - Consent ledger records proposals and decisions append-only
+    - Reattempts are tracked separately
     """
     await load_seed_data(test_db_session)
 
@@ -198,39 +188,3 @@ async def test_first_attempt_rule_and_append_only_ledger(test_db_session: AsyncS
     fa_list = first_attempts.scalars().all()
     assert len(fa_list) == 1
     assert fa_list[0].score == 8.0
-
-    # Test Append-Only Consent Ledger
-    proposal = ConsentLedger(
-        student_id=student.id,
-        proposal_type="modality_switch",
-        proposal_payload={"modality": "audio"},
-        proposed_by_agent="zpd_hint",
-        priority_class="pedagogy",
-        status="pending",
-    )
-    test_db_session.add(proposal)
-    await test_db_session.commit()
-
-    # Decision is a NEW row referencing supersedes_id (Append-only rule)
-    decision = ConsentLedger(
-        student_id=student.id,
-        proposal_type="modality_switch",
-        proposal_payload={"modality": "audio"},
-        proposed_by_agent="zpd_hint",
-        priority_class="pedagogy",
-        status="approved",
-        decided_by="student",
-        decided_at=datetime.now(timezone.utc),
-        supersedes_id=proposal.id,
-    )
-    test_db_session.add(decision)
-    await test_db_session.commit()
-
-    ledger_entries = await test_db_session.execute(
-        select(ConsentLedger).where(ConsentLedger.student_id == student.id).order_by(ConsentLedger.created_at)
-    )
-    all_entries = ledger_entries.scalars().all()
-    assert len(all_entries) == 2
-    assert all_entries[0].status == "pending"
-    assert all_entries[1].status == "approved"
-    assert all_entries[1].supersedes_id == all_entries[0].id

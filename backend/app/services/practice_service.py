@@ -7,9 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from app.db.base import utc_now
-from app.db.models.identity import User, Student, DisabilityProfile
+from app.db.models.identity import User, Student
 from app.db.models.practice import DPP, Question, DPPSession, DPPResponse
-from app.db.models.adaptation import HintEvent
 from app.llm.decision_layer import RequestContext, Decision
 from app.mcp.router import MCPRouter
 from app.schemas.practice import (
@@ -121,39 +120,13 @@ class PracticeService:
         if not question:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
 
-        # Fetch student's disability hint configuration
-        disp_res = await session.execute(
-            select(Student)
-            .where(Student.id == student.id)
-            .options(
-                selectinload(Student.disabilities).selectinload(DisabilityProfile.disability_type),
-                selectinload(Student.age_band),
-            )
-        )
-        full_student = disp_res.scalar_one()
-
-        disability_codes = [d.disability_type.code for d in full_student.disabilities if d.disability_type]
-        first_disability = full_student.disabilities[0].disability_type if full_student.disabilities else None
-        hint_style_rules = json.dumps(first_disability.hint_style_config) if first_disability else "Provide clear guidance."
-
-        # Record HintEvent (PROJECT.md §6 & §10.3)
-        hint_event = HintEvent(
-            student_id=student.id,
-            question_id=question.id,
-            scaffold_level=requested_depth or "partial_hint",
-            modality=modality,
-            disability_type_id=first_disability.id if first_disability else None,
-        )
-        session.add(hint_event)
-        await session.commit()
-
         # Build context & route to ZPDHintAgent
         ctx = RequestContext(
             user_id=current_user.id,
             role="student",
             student_id=student.id,
-            disability_types=disability_codes,
-            age_band=full_student.age_band.code if full_student.age_band else "11-15",
+            disability_types=[],
+            age_band=student.age_band.code if student.age_band else "11-15",
         )
         decision = Decision(intent="request_hint")
 

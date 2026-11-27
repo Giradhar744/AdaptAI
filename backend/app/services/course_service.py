@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from app.db.models.identity import Teacher, User, Student
-from app.db.models.content import Course, Chapter, Topic, Lecture
+from app.db.models.content import Course, Chapter, Lecture
 from app.db.models.practice import DPP, ChapterTest
 from app.db.models.progress import Enrolment, ChapterProgress
 from app.db.models.reference import AgeBand
@@ -155,8 +155,6 @@ class CourseService:
                 joinedload(Course.teacher),
                 joinedload(Course.age_band),
                 selectinload(Course.chapters)
-                .selectinload(Chapter.topics),
-                selectinload(Course.chapters)
                 .selectinload(Chapter.lectures),
             )
         )
@@ -199,25 +197,15 @@ class CourseService:
             for t_id, ch_id in tests_res.all():
                 tests_by_chapter[ch_id] = t_id
 
-        # Query only DPPs specifically belonging to topics or lectures in this course
-        dpps_by_topic = {}
+        # Query only DPPs specifically belonging to lectures in this course
         dpps_by_lecture = {}
         if chapter_ids:
             lecture_ids = [l.id for ch in course.chapters for l in ch.lectures]
-            topic_ids = [t.id for ch in course.chapters for t in ch.topics]
-            dpp_conditions = []
             if lecture_ids:
-                dpp_conditions.append(DPP.lecture_id.in_(lecture_ids))
-            if topic_ids:
-                dpp_conditions.append(DPP.topic_id.in_(topic_ids))
-
-            if dpp_conditions:
                 dpps_res = await session.execute(
-                    select(DPP.id, DPP.lecture_id, DPP.topic_id).where(or_(*dpp_conditions))
+                    select(DPP.id, DPP.lecture_id).where(DPP.lecture_id.in_(lecture_ids))
                 )
-                for dpp_id, dpp_lec_id, dpp_top_id in dpps_res.all():
-                    if dpp_top_id:
-                        dpps_by_topic[dpp_top_id] = dpp_id
+                for dpp_id, dpp_lec_id in dpps_res.all():
                     if dpp_lec_id:
                         dpps_by_lecture[dpp_lec_id] = dpp_id
 
@@ -242,16 +230,6 @@ class CourseService:
             ch_dpp_done = ch_prog.dpp_completed if ch_prog else False
             ch_test_unlocked = ch_prog.test_unlocked if ch_prog else False
 
-            topics_resp = [
-                TopicResponse(
-                    id=t.id,
-                    chapter_id=t.chapter_id,
-                    title=t.title,
-                    position=t.position,
-                    content_text=t.content_text,
-                )
-                for t in ch.topics
-            ]
             lectures_resp = [
                 LectureResponse(
                     id=l.id,
@@ -261,22 +239,17 @@ class CourseService:
                     # Access barrier: hide stream URL if student is not enrolled
                     playback_url=video_store.playback_ref(l.video_ref) if is_enrolled else None,
                     duration_seconds=l.duration_seconds,
-                    dpp_id=dpps_by_lecture.get(l.id) or (dpps_by_topic.get(ch.topics[0].id) if ch.topics else None),
+                    dpp_id=dpps_by_lecture.get(l.id),
                     is_completed=ch_lecture_done,
                 )
                 for l in ch.lectures
             ]
-            # Associate chapter with any DPP belonging to its lectures or topics
+            # Associate chapter with any DPP belonging to its lectures
             ch_dpp_id = None
             for l in ch.lectures:
                 if dpps_by_lecture.get(l.id):
                     ch_dpp_id = dpps_by_lecture[l.id]
                     break
-            if not ch_dpp_id:
-                for t in ch.topics:
-                    if dpps_by_topic.get(t.id):
-                        ch_dpp_id = dpps_by_topic[t.id]
-                        break
 
             chapters_response.append(
                 ChapterResponse(
@@ -284,7 +257,7 @@ class CourseService:
                     course_id=ch.course_id,
                     title=ch.title,
                     position=ch.position,
-                    topics=topics_resp,
+                    topics=[],
                     lectures=lectures_resp,
                     dpp_id=ch_dpp_id,
                     dpp_completed=ch_dpp_done,
@@ -480,42 +453,13 @@ class CourseService:
         teacher_user: User,
         req: TopicCreateRequest,
     ) -> TopicResponse:
-        stmt = (
-            select(Chapter)
-            .where(Chapter.id == chapter_id)
-            .options(selectinload(Chapter.course))
-        )
-        res = await session.execute(stmt)
-        chapter = res.scalar_one_or_none()
-        if not chapter:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found.")
-
-        if not teacher_user.teacher_profile or chapter.course.teacher_id != teacher_user.teacher_profile.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not own this course.")
-
-        position = req.position
-        if position is None:
-            count_res = await session.execute(
-                select(func.count(Topic.id)).where(Topic.chapter_id == chapter_id)
-            )
-            position = (count_res.scalar() or 0) + 1
-
-        topic = Topic(
+        import uuid
+        return TopicResponse(
+            id=str(uuid.uuid4()),
             chapter_id=chapter_id,
             title=req.title,
-            position=position,
+            position=req.position or 1,
             content_text=req.content_text,
-        )
-        session.add(topic)
-        await session.commit()
-        await session.refresh(topic)
-
-        return TopicResponse(
-            id=topic.id,
-            chapter_id=topic.chapter_id,
-            title=topic.title,
-            position=topic.position,
-            content_text=topic.content_text,
         )
 
     @staticmethod

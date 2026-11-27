@@ -99,49 +99,33 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
   const [activeLectureId, setActiveLectureId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [generatingDpp, setGeneratingDpp] = useState(false);
+  const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
+  const exercisesSectionRef = React.useRef<HTMLDivElement>(null);
 
-  const handleGenerateDppForActiveLecture = async () => {
-    if (!activeChapter && !activeLecture) return;
-    setGeneratingDpp(true);
-    setActionMessage('✨ AI is creating 4-choice practice questions for this lesson...');
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const endpoint = activeLecture
-        ? `/api/v1/lectures/${activeLecture.id}/dpp/generate`
-        : `/api/v1/content/generate-dpp`;
-      const body = activeLecture
-        ? undefined
-        : JSON.stringify({
-            chapter_id: activeChapter?.id,
-            topic_prompt: `Lesson on ${activeChapter?.title}`,
-            num_questions: 4,
-          });
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body,
-      });
-
-      if (res.ok) {
-        const dpp = await res.json();
-        setActionMessage('Practice questions ready! Launching your session...');
-        await fetchCourse();
-        setTimeout(() => {
-          setActionMessage(null);
-          onLaunchPractice(dpp.id, activeChapter?.id, activeChapter?.title, course?.title);
-        }, 1200);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setActionMessage(err.detail || 'Could not generate DPP for this chapter.');
+  // Auto-expand the active chapter whenever course or activeChapterIndex updates
+  useEffect(() => {
+    if (course?.chapters && course.chapters.length > 0) {
+      const activeCh = course.chapters[activeChapterIndex];
+      if (activeCh && expandedChapters[activeCh.id] === undefined) {
+        setExpandedChapters((prev) => ({
+          ...prev,
+          [activeCh.id]: true,
+        }));
       }
-    } catch {
-      setActionMessage('Failed to connect to question service.');
-    } finally {
-      setGeneratingDpp(false);
+    }
+  }, [course, activeChapterIndex]);
+
+  const toggleChapter = (chapterId: string, idx: number) => {
+    setExpandedChapters((prev) => ({
+      ...prev,
+      [chapterId]: !prev[chapterId],
+    }));
+    setActiveChapterIndex(idx);
+  };
+
+  const handleScrollToExercises = () => {
+    if (exercisesSectionRef.current) {
+      exercisesSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
@@ -160,41 +144,11 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
             setActiveLectureId(firstChapter.lectures[0].id);
           }
         }
+      } else {
+        console.error('Failed to fetch course details:', res.status, res.statusText);
       }
-    } catch {
-      // Fallback course structure if offline/demo
-      setCourse({
-        id: courseId,
-        title: 'Natural Sciences & Cell Biology',
-        subject: 'Biology',
-        age_band_label: 'Ages 11–15',
-        description: 'Explore the building blocks of life, cellular structure, and energy transport with calm, sensory-friendly visual guides.',
-        fee: 0,
-        chapters: [
-          {
-            id: 'ch-sample-1',
-            course_id: courseId,
-            title: 'Chapter 1: The Architecture of Living Cells',
-            position: 1,
-            lectures: [
-              {
-                id: 'lec-1',
-                chapter_id: 'ch-sample-1',
-                title: 'Introduction to Plant and Animal Cells',
-                video_ref: 'sample-video-001',
-                playback_url: 'https://www.w3schools.com/html/mov_bbb.mp4',
-                duration_seconds: 420,
-                dpp_id: 'dpp-sample-001',
-                is_completed: false,
-              },
-            ],
-            dpp_completed: false,
-            test_unlocked: false,
-            chapter_test_id: 'test-sample-001',
-          },
-        ],
-      });
-      setActiveLectureId('lec-1');
+    } catch (err) {
+      console.error('Error fetching course details from database:', err);
     } finally {
       setLoading(false);
     }
@@ -261,25 +215,23 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
   if (!course) {
     return (
       <div style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-        <p>Could not load course details.</p>
-        <button type="button" className="button-secondary" onClick={onBackToCourses}>
-          ← Back to My Courses
-        </button>
+        <p style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px' }}>
+          Could not load course details.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+          <button type="button" className="button-primary" onClick={fetchCourse} style={{ padding: '8px 18px' }}>
+            Retry ↻
+          </button>
+          <button type="button" className="button-secondary" onClick={onBackToCourses} style={{ padding: '8px 18px' }}>
+            ← Back to My Courses
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div style={{ width: '100%', margin: '0 auto', padding: 'var(--space-4) 0' }}>
-      {generatingDpp && (
-        <LoadingScreen
-          preset="aiGenerating"
-          title="AI Creating Practice Questions..."
-          subtitle="Formulating 4-option practice questions based on this video lesson..."
-          variant="fullscreen"
-        />
-      )}
-
       {/* Top Navigation */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
         <button
@@ -300,33 +252,66 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
         className="card"
         style={{
           marginBottom: 'var(--space-6)',
-          borderLeft: '6px solid var(--primary)',
-          background: 'linear-gradient(135deg, rgba(13, 148, 136, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-subtle, #e2e8f0)',
+          background: 'var(--bg-surface-elevated, #ffffff)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          padding: '24px 28px',
         }}
       >
-        <span className="brand-badge" style={{ marginBottom: 'var(--space-2)' }}>
-          {course.subject} · {formatStudentTrack(course.age_band_label)}
-        </span>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 'var(--space-1) 0 var(--space-2) 0' }}>
-          {course.title}
-        </h1>
-        {course.description && (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', margin: 0, lineHeight: '1.6' }}>
-            {course.description}
-          </p>
-        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <span className="brand-badge" style={{ marginBottom: 'var(--space-2)' }}>
+              {course.subject} · {formatStudentTrack(course.age_band_label)}
+            </span>
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 'var(--space-1) 0 var(--space-2) 0' }}>
+              {course.title}
+            </h1>
+            {course.description && (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9375rem', margin: 0, lineHeight: '1.6', maxWidth: '720px' }}>
+                {course.description}
+              </p>
+            )}
+          </div>
+
+          {/* Top-Right Quick Jump to Test Section */}
+          <button
+            type="button"
+            onClick={handleScrollToExercises}
+            className="button-secondary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '9px 18px',
+              borderRadius: '10px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#1e293b',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+              transition: 'all 0.15s ease',
+            }}
+            title="Jump to Chapter Exercises & Assessment"
+          >
+            <span style={{ fontSize: '1.125rem' }}>⏱️</span>
+            <span>Chapter Test & Practice</span>
+          </button>
+        </div>
       </div>
 
       {actionMessage && (
         <div
           role="status"
           style={{
-            padding: 'var(--space-3) var(--space-4)',
+            padding: '12px 18px',
             marginBottom: 'var(--space-4)',
-            background: 'rgba(5, 150, 105, 0.1)',
-            borderLeft: '4px solid #059669',
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
             color: '#059669',
-            borderRadius: 'var(--radius-sm)',
+            borderRadius: '10px',
             fontWeight: 600,
             fontSize: '0.9375rem',
           }}
@@ -335,17 +320,28 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
         </div>
       )}
 
-      {/* Main Course Study Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 'var(--space-6)', alignItems: 'start' }}>
+      {/* Main Course Study Grid (Decreased Video Size, Increased Chapters Sidebar) */}
+      <div className="study-room-grid">
         {/* Left: Video Player & Practice / Test Hub */}
         <div>
           {activeLecture ? (
-            <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 'var(--space-6)' }}>
+            <div
+              className="card"
+              style={{
+                padding: 0,
+                overflow: 'hidden',
+                marginBottom: 'var(--space-6)',
+                borderRadius: '16px',
+                border: '1px solid var(--border-subtle, #e2e8f0)',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+              }}
+            >
               {/* Video Player */}
               <div
                 style={{
                   width: '100%',
                   aspectRatio: '16 / 9',
+                  maxHeight: '440px',
                   background: '#090d16',
                   display: 'flex',
                   alignItems: 'center',
@@ -441,7 +437,19 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
 
           {/* Interactive Chapter Exercises Card */}
           {activeChapter && (
-            <div className="card" style={{ borderTop: '4px solid #6366f1' }}>
+            <div
+              ref={exercisesSectionRef}
+              id="chapter-exercises-section"
+              className="card"
+              style={{
+                borderRadius: '16px',
+                border: '1px solid var(--border-subtle, #e2e8f0)',
+                background: 'var(--bg-surface-elevated, #ffffff)',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                padding: '24px 28px',
+                scrollMarginTop: '24px',
+              }}
+            >
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
                 Chapter Exercises & Assessment
               </h2>
@@ -466,7 +474,7 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
                     </h3>
                   </div>
                   <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', minHeight: '38px' }}>
-                    Solve 4-choice questions with real-time text and speech hints tailored to your learning needs.
+                    Solve 3-choice questions with real-time text and speech hints tailored to your learning needs.
                   </p>
                   {(() => {
                     const availableDppId = activeLecture?.dpp_id || activeChapter?.dpp_id;
@@ -490,19 +498,19 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
                       );
                     }
                     return (
-                      <button
-                        type="button"
-                        className="button-primary"
-                        disabled={generatingDpp}
-                        onClick={handleGenerateDppForActiveLecture}
+                      <div
                         style={{
-                          width: '100%',
-                          padding: '8px',
-                          background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                          padding: '10px 14px',
+                          background: 'var(--bg-surface-elevated, #f8fafc)',
+                          borderRadius: 'var(--radius-md, 8px)',
+                          border: '1px solid var(--border-subtle, #e2e8f0)',
+                          color: 'var(--text-secondary, #64748b)',
+                          fontSize: '0.8125rem',
+                          textAlign: 'center',
                         }}
                       >
-                        {generatingDpp ? '✨ AI Generating Questions...' : '✨ Generate DPP for this Lesson →'}
-                      </button>
+                        📝 Practice questions will be published by your teacher soon.
+                      </div>
                     );
                   })()}
                 </div>
@@ -545,82 +553,174 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
           )}
         </div>
 
-        {/* Right Sidebar: Chapter & Lesson List */}
+        {/* Right Sidebar: Chapter & Lesson Tree Navigation (Accordion Hierarchy) */}
         <div>
-          <div className="card">
-            <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: 'var(--space-3)' }}>
-              Course Chapters
-            </h2>
+          <div
+            className="card"
+            style={{
+              padding: '24px',
+              borderRadius: '16px',
+              border: '1px solid var(--border-subtle, #e2e8f0)',
+              background: 'var(--bg-surface-elevated, #ffffff)',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+              <h2 style={{ fontSize: '1.1875rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                Course Chapters
+              </h2>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary, #64748b)', fontWeight: 600 }}>
+                {course.chapters.length} {course.chapters.length === 1 ? 'Chapter' : 'Chapters'}
+              </span>
+            </div>
 
             {course.chapters.length === 0 ? (
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                 No chapters added to this course yet.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {course.chapters.map((ch, idx) => {
                   const isCurrent = idx === activeChapterIndex;
+                  const isExpanded = expandedChapters[ch.id] ?? (isCurrent || idx === 0);
+                  const hasLectures = Boolean(ch.lectures && ch.lectures.length > 0);
+
                   return (
-                    <div
-                      key={ch.id}
-                      style={{
-                        borderRadius: 'var(--radius-sm)',
-                        border: isCurrent ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
-                        background: isCurrent ? 'rgba(13, 148, 136, 0.05)' : 'var(--surface-sunken)',
-                        padding: 'var(--space-3)',
-                      }}
-                    >
+                    <div key={ch.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                      {/* Chapter Row Header */}
                       <button
                         type="button"
                         onClick={() => {
-                          setActiveChapterIndex(idx);
-                          if (ch.lectures.length > 0) {
-                            setActiveLectureId(ch.lectures[0].id);
+                          if (hasLectures) {
+                            toggleChapter(ch.id, idx);
+                          } else {
+                            setActiveChapterIndex(idx);
                           }
                         }}
                         style={{
-                          background: 'none',
-                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
                           width: '100%',
-                          textAlign: 'left',
+                          padding: '10px 12px',
+                          borderRadius: '10px',
+                          border: isCurrent ? '1px solid var(--border-subtle, #e2e8f0)' : '1px solid transparent',
+                          background: isCurrent ? 'rgba(13, 148, 136, 0.06)' : 'transparent',
+                          color: isCurrent ? 'var(--primary, #0d9488)' : 'var(--text-primary)',
                           cursor: 'pointer',
-                          padding: 0,
-                          fontWeight: 700,
-                          fontSize: '0.875rem',
-                          color: isCurrent ? 'var(--primary)' : 'var(--text-primary)',
+                          textAlign: 'left',
+                          transition: 'all 0.15s ease',
+                          gap: '10px',
                         }}
                       >
-                        {idx + 1}. {ch.title}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                          {hasLectures && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '18px',
+                                height: '18px',
+                                color: isExpanded ? 'var(--primary, #0d9488)' : '#64748b',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {isExpanded ? (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              ) : (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="9 18 15 12 9 6" />
+                                </svg>
+                              )}
+                            </span>
+                          )}
+                          <span style={{ fontWeight: 700, fontSize: '0.9375rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {idx + 1}. {ch.title}
+                          </span>
+                        </div>
+
+                        <span
+                          style={{
+                            fontSize: '0.75rem',
+                            color: '#64748b',
+                            background: 'rgba(0, 0, 0, 0.04)',
+                            padding: '2px 8px',
+                            borderRadius: '9999px',
+                            flexShrink: 0,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {ch.lectures.length} {ch.lectures.length === 1 ? 'lesson' : 'lessons'}
+                        </span>
                       </button>
 
-                      {/* Lectures under active chapter */}
-                      {isCurrent && ch.lectures.length > 0 && (
-                        <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {/* Tree Branch Line with Nested Lessons (Matches Image 1) */}
+                      {isExpanded && ch.lectures.length > 0 && (
+                        <div
+                          style={{
+                            marginLeft: '20px',
+                            paddingLeft: '14px',
+                            borderLeft: '1.5px solid var(--border-subtle, #cbd5e1)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            marginTop: '4px',
+                            marginBottom: '8px',
+                          }}
+                        >
                           {ch.lectures.map((lec, lIdx) => {
-                            const isLecActive = lec.id === activeLectureId;
+                            const isLecActive = isCurrent && lec.id === activeLectureId;
                             return (
                               <button
                                 key={lec.id}
                                 type="button"
-                                onClick={() => setActiveLectureId(lec.id)}
+                                onClick={() => {
+                                  setActiveChapterIndex(idx);
+                                  setActiveLectureId(lec.id);
+                                }}
                                 style={{
-                                  background: isLecActive ? 'var(--primary)' : 'transparent',
-                                  color: isLecActive ? '#ffffff' : 'var(--text-secondary)',
-                                  border: 'none',
-                                  borderRadius: 'var(--radius-sm)',
-                                  padding: '5px 8px',
-                                  fontSize: '0.8125rem',
-                                  textAlign: 'left',
-                                  cursor: 'pointer',
                                   display: 'flex',
-                                  justifyContent: 'space-between',
                                   alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  borderRadius: '8px',
+                                  border: isLecActive ? '1px solid var(--primary, #0d9488)' : '1px solid transparent',
+                                  background: isLecActive ? 'var(--primary, #0d9488)' : 'transparent',
+                                  color: isLecActive ? '#ffffff' : 'var(--text-secondary, #475569)',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  transition: 'all 0.15s ease',
+                                  gap: '10px',
+                                  boxShadow: isLecActive ? '0 2px 6px rgba(13, 148, 136, 0.2)' : 'none',
                                 }}
                               >
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  Lesson {lIdx + 1}: {lec.title}
-                                </span>
-                                {lec.is_completed && <span>✓</span>}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                  <span
+                                    style={{
+                                      fontSize: '0.875rem',
+                                      fontWeight: isLecActive ? 700 : 500,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    Lesson {lIdx + 1}: {lec.title}
+                                  </span>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                  {lec.is_completed ? (
+                                    <span style={{ color: isLecActive ? '#ffffff' : '#059669', fontSize: '0.875rem', fontWeight: 800 }}>✓</span>
+                                  ) : (
+                                    <span style={{ fontSize: '0.75rem', opacity: isLecActive ? 0.95 : 0.6, fontWeight: 600 }}>
+                                      {Math.max(1, Math.round(lec.duration_seconds / 60))}m
+                                    </span>
+                                  )}
+                                </div>
                               </button>
                             );
                           })}

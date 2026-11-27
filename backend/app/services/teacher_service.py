@@ -9,7 +9,6 @@ from app.db.models.identity import User, Student
 from app.db.models.content import Course, Chapter
 from app.db.models.progress import Enrolment
 from app.db.models.practice import ChapterTest, TestAttempt
-from app.db.models.adaptation import StruggleAssessment
 from app.db.models.rating import CourseRating
 from app.agents.teacher_copilot import TeacherCopilotAgent
 from app.core.config import settings
@@ -174,17 +173,17 @@ class TeacherAnalyticsService:
                 else None
             )
 
-            # Check recent struggle assessment
-            sa_stmt = (
-                select(StruggleAssessment)
-                .where(StruggleAssessment.student_id == s.id)
-                .order_by(desc(StruggleAssessment.created_at))
-                .limit(1)
-            )
-            sa_res = await session.execute(sa_stmt)
-            latest_sa = sa_res.scalar_one_or_none()
+            # Check struggle assessment derived from score
+            if first_score is not None:
+                if first_score < 50.0:
+                    risk_level = "high"
+                elif first_score < 75.0:
+                    risk_level = "medium"
+                else:
+                    risk_level = "low"
+            else:
+                risk_level = "low"
 
-            risk_level = latest_sa.risk_level if latest_sa else "low"
             if risk_level in ("medium", "high"):
                 struggling_count += 1
 

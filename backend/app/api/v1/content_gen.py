@@ -154,7 +154,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
-from app.db.models.content import Chapter, Topic, Lecture
+from app.db.models.content import Chapter, Lecture
 from app.db.models.practice import DPP
 
 
@@ -196,15 +196,6 @@ async def get_lecture_dpp(
     res = await session.execute(stmt)
     dpp = res.scalar_one_or_none()
     if not dpp:
-        # Fallback to chapter's topic DPP if available
-        lec_res = await session.execute(
-            select(Lecture).where(Lecture.id == id).options(
-                selectinload(Lecture.chapter).selectinload(Chapter.topics)
-            )
-        )
-        lec = lec_res.scalar_one_or_none()
-        if lec and lec.chapter and lec.chapter.topics:
-            return await ContentGenService.get_topic_dpp(session, lec.chapter.topics[0].id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No DPP found for this lecture.")
 
     return await ContentGenService.get_dpp_by_id(session, dpp.id)
@@ -216,24 +207,13 @@ async def get_chapter_dpp(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Retrieves the DPP questions for a chapter (via any of its lectures or topics)."""
+    """Retrieves the DPP questions for a chapter (via any of its lectures)."""
     # 1. Check lectures in this chapter
     lec_res = await session.execute(select(Lecture.id).where(Lecture.chapter_id == id))
     lec_ids = [row[0] for row in lec_res.all()]
     if lec_ids:
         dpp_res = await session.execute(
             select(DPP).where(DPP.lecture_id.in_(lec_ids)).options(selectinload(DPP.questions))
-        )
-        dpp = dpp_res.scalar_one_or_none()
-        if dpp:
-            return await ContentGenService.get_dpp_by_id(session, dpp.id)
-
-    # 2. Check topics in this chapter
-    top_res = await session.execute(select(Topic.id).where(Topic.chapter_id == id))
-    top_ids = [row[0] for row in top_res.all()]
-    if top_ids:
-        dpp_res = await session.execute(
-            select(DPP).where(DPP.topic_id.in_(top_ids)).options(selectinload(DPP.questions))
         )
         dpp = dpp_res.scalar_one_or_none()
         if dpp:
@@ -264,7 +244,7 @@ async def generate_dpp_direct(
     current_teacher: User = Depends(require_teacher),
     session: AsyncSession = Depends(get_db),
 ):
-    """Convenience studio endpoint: creates a topic under chapter and generates AI DPP."""
+    """Convenience studio endpoint: creates a DPP under chapter/lecture."""
     if req.lecture_id:
         return await ContentGenService.generate_lecture_dpp(
             session,
@@ -274,22 +254,34 @@ async def generate_dpp_direct(
             lecture_description=req.topic_prompt,
         )
 
-    ch_res = await session.execute(select(Chapter).where(Chapter.id == req.chapter_id))
+    ch_res = await session.execute(
+        select(Chapter).where(Chapter.id == req.chapter_id).options(selectinload(Chapter.lectures))
+    )
     chapter = ch_res.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found.")
 
-    topic = Topic(
+    if chapter.lectures:
+        return await ContentGenService.generate_lecture_dpp(
+            session,
+            chapter.lectures[0].id,
+            current_teacher,
+            num_questions=req.num_questions,
+            lecture_description=req.topic_prompt,
+        )
+
+    lecture = Lecture(
         chapter_id=req.chapter_id,
-        title=req.topic_prompt,
-        content_text=req.topic_prompt,
+        title=req.topic_prompt or "Lesson 1: Practice",
+        description=req.topic_prompt,
         position=1,
     )
-    session.add(topic)
+    session.add(lecture)
     await session.commit()
-    await session.refresh(topic)
-
-    return await ContentGenService.generate_topic_dpp(session, topic.id, current_teacher)
+    await session.refresh(lecture)
+    return await ContentGenService.generate_lecture_dpp(
+        session, lecture.id, current_teacher, num_questions=req.num_questions, lecture_description=req.topic_prompt
+    )
 
 
 @router.post("/content/generate-chapter-test", response_model=ChapterTestResponse, status_code=status.HTTP_201_CREATED)
@@ -298,23 +290,11 @@ async def generate_chapter_test_direct(
     current_teacher: User = Depends(require_teacher),
     session: AsyncSession = Depends(get_db),
 ):
-    """Convenience studio endpoint: ensures chapter has topic content, then generates timed chapter test."""
+    """Convenience studio endpoint: generates timed chapter test."""
     ch_res = await session.execute(select(Chapter).where(Chapter.id == req.chapter_id))
     chapter = ch_res.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chapter not found.")
-
-    top_res = await session.execute(select(Topic).where(Topic.chapter_id == req.chapter_id))
-    topics = top_res.scalars().all()
-    if not topics and req.topic_prompt:
-        topic = Topic(
-            chapter_id=req.chapter_id,
-            title=req.topic_prompt,
-            content_text=req.topic_prompt,
-            position=1,
-        )
-        session.add(topic)
-        await session.commit()
 
     return await ContentGenService.generate_chapter_test(session, req.chapter_id, current_teacher)
 

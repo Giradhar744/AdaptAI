@@ -553,8 +553,9 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
           },
           body: JSON.stringify({
             question_id: currentQ.id,
-            selected_option_key: selectedOption,
-            hints_used_count: hints.length,
+            answer: { selected_key: selectedOption },
+            time_taken_ms: secondsElapsed * 1000,
+            hints_used: hints.length,
           }),
         });
       } catch {

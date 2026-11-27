@@ -10,6 +10,9 @@ def get_normalized_database_url_and_args(raw_url: str) -> Tuple[str, Dict[str, A
     """
     url = raw_url.strip()
 
+    if url.startswith("sqlite"):
+        return url, {}
+
     # Normalize scheme: asyncpg requires postgresql+asyncpg://
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -36,16 +39,22 @@ def get_normalized_database_url_and_args(raw_url: str) -> Tuple[str, Dict[str, A
 db_url, connect_args = get_normalized_database_url_and_args(settings.DATABASE_URL)
 
 # Create asynchronous engine with connection pooling for Supabase PostgreSQL resiliency
-engine_kwargs: Dict[str, Any] = {
-    "connect_args": connect_args,
-    "echo": False,
-    "future": True,
-    "pool_size": 15,
-    "max_overflow": 25,
-    "pool_timeout": 30,
-    "pool_recycle": 1800,
-    "pool_pre_ping": False,
-}
+if "sqlite" in db_url:
+    engine_kwargs: Dict[str, Any] = {
+        "echo": False,
+        "future": True,
+    }
+else:
+    engine_kwargs: Dict[str, Any] = {
+        "connect_args": connect_args,
+        "echo": False,
+        "future": True,
+        "pool_size": 15,
+        "max_overflow": 25,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+        "pool_pre_ping": False,
+    }
 
 engine = create_async_engine(db_url, **engine_kwargs)
 

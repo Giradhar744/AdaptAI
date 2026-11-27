@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from app.db.models.identity import User
-from app.db.models.content import Course, Chapter, Topic, Lecture
+from app.db.models.content import Course, Chapter, Lecture
 from app.db.models.practice import DPP, ChapterTest, Question
 from app.llm.decision_layer import RequestContext, Decision
 from app.mcp.router import MCPRouter
@@ -27,37 +27,10 @@ class ContentGenService:
         topic_id: str,
         teacher_user: User,
     ) -> DPPResponse:
-        stmt = (
-            select(Topic)
-            .where(Topic.id == topic_id)
-            .options(
-                selectinload(Topic.chapter)
-                .selectinload(Chapter.course)
-                .selectinload(Course.age_band)
-            )
+        # Fallback to lecture DPP generation
+        return await ContentGenService.generate_lecture_dpp(
+            session, topic_id, teacher_user
         )
-        res = await session.execute(stmt)
-        topic = res.scalar_one_or_none()
-        if not topic:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found.")
-
-        course = topic.chapter.course
-        if teacher_user.role != "admin":
-            if teacher_user.teacher_profile and course.teacher_id is None:
-                course.teacher_id = teacher_user.teacher_profile.id
-            elif not teacher_user.teacher_profile or course.teacher_id != teacher_user.teacher_profile.id:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not own this course.")
-
-        # Build context & decision for agent routing
-        ctx = RequestContext(
-            user_id=teacher_user.id,
-            role="teacher",
-            course_id=course.id,
-            chapter_id=topic.chapter_id,
-            topic_id=topic.id,
-            age_band=course.age_band.code if course.age_band else "11-15",
-        )
-        decision = Decision(intent="generate_dpp")
 
         # Invoke Content Generation Agent through MCP router
         agent_responses = await MCPRouter.route(
@@ -165,37 +138,12 @@ class ContentGenService:
         chapter = lecture.chapter
         course = chapter.course
 
-        # Find or create a matching topic under chapter
-        top_res = await session.execute(
-            select(Topic).where(Topic.chapter_id == chapter.id)
-        )
-        existing_topics = top_res.scalars().all()
-        topic = next((t for t in existing_topics if t.title.strip().lower() == lecture.title.strip().lower()), None)
-        if not topic:
-            if existing_topics:
-                topic = existing_topics[0]
-                if lecture_description:
-                    topic.content_text = lecture_description
-            else:
-                topic = Topic(
-                    chapter_id=chapter.id,
-                    title=lecture.title,
-                    content_text=lecture_description or f"Educational lecture: {lecture.title}",
-                    position=1,
-                )
-                session.add(topic)
-                await session.flush()
-        elif lecture_description:
-            topic.content_text = lecture_description
-            await session.flush()
-
         # Build context & decision for agent routing
         ctx = RequestContext(
             user_id=user.id,
             role=user.role,
             course_id=course.id,
             chapter_id=chapter.id,
-            topic_id=topic.id,
             age_band=course.age_band.code if course.age_band else "11-15",
         )
         decision = Decision(intent="generate_dpp")
@@ -236,20 +184,14 @@ class ContentGenService:
                 detail="Content Generation Agent failed to generate questions.",
             )
 
-        # Check if DPP already exists for this lecture (or topic)
+        # Check if DPP already exists for this lecture
         existing_dpp = (await session.execute(
             select(DPP).where(DPP.lecture_id == lecture.id)
         )).scalar_one_or_none()
 
         if not existing_dpp:
-            existing_dpp = (await session.execute(
-                select(DPP).where(DPP.topic_id == topic.id)
-            )).scalar_one_or_none()
-
-        if not existing_dpp:
             dpp = DPP(
                 lecture_id=lecture.id,
-                topic_id=topic.id,
                 generated_by="llm",
                 status="published",
             )
@@ -258,7 +200,6 @@ class ContentGenService:
         else:
             dpp = existing_dpp
             dpp.lecture_id = lecture.id
-            dpp.topic_id = topic.id
             dpp.status = "published"
             # Delete previous questions if regenerating
             del_stmt = select(Question).where(
@@ -381,8 +322,8 @@ class ContentGenService:
             select(DPP)
             .where(DPP.id == dpp_id)
             .options(
-                selectinload(DPP.topic)
-                .selectinload(Topic.chapter)
+                selectinload(DPP.lecture)
+                .selectinload(Lecture.chapter)
                 .selectinload(Chapter.course),
                 selectinload(DPP.questions),
             )
@@ -392,8 +333,8 @@ class ContentGenService:
         if not dpp:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DPP not found.")
 
-        course = dpp.topic.chapter.course
-        if not teacher_user.teacher_profile or course.teacher_id != teacher_user.teacher_profile.id:
+        course = dpp.lecture.chapter.course if dpp.lecture and dpp.lecture.chapter else None
+        if course and (not teacher_user.teacher_profile or course.teacher_id != teacher_user.teacher_profile.id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not own this course.")
 
         dpp.status = new_status
@@ -431,7 +372,7 @@ class ContentGenService:
             .where(Chapter.id == chapter_id)
             .options(
                 selectinload(Chapter.course).selectinload(Course.age_band),
-                selectinload(Chapter.topics),
+                selectinload(Chapter.lectures),
             )
         )
         res = await session.execute(stmt)
@@ -443,11 +384,11 @@ class ContentGenService:
         if not teacher_user.teacher_profile or course.teacher_id != teacher_user.teacher_profile.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not own this course.")
 
-        combined_topic_content = "\n\n".join(
-            [f"Topic: {t.title}\n{t.content_text}" for t in chapter.topics]
+        combined_content = "\n\n".join(
+            [f"Lesson: {l.title}" for l in chapter.lectures]
         )
-        if not combined_topic_content:
-            combined_topic_content = f"Chapter overview: {chapter.title} in subject {course.subject}."
+        if not combined_content:
+            combined_content = f"Chapter overview: {chapter.title} in subject {course.subject}."
 
         ctx = RequestContext(
             user_id=teacher_user.id,
@@ -463,7 +404,7 @@ class ContentGenService:
             decision,
             payload={
                 "chapter_title": chapter.title,
-                "content_text": combined_topic_content,
+                "content_text": combined_content,
                 "subject": course.subject,
                 "num_questions": settings.TEST_DEFAULT_QUESTIONS,
             },

@@ -130,38 +130,62 @@ body {
   }
 }
 
-/* Base Accessibility Toolbar */
-.a11y-toolbar {
-  background-color: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: var(--space-2) var(--space-6);
+/* Unified Top Header Strip covering all top space */
+.site-header {
+  background-color: var(--bg-surface, #ffffff);
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+  width: 100%;
+  margin: 0;
+  padding: 12px 0 14px 0;
+  position: relative;
+  z-index: 100;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
-.a11y-controls {
+.header-right-stacked {
   display: flex;
-  gap: var(--space-2);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.header-a11y-row {
+  display: flex;
+  gap: 6px;
   align-items: center;
+  justify-content: flex-end;
+}
+
+.header-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .btn-a11y {
   background: var(--bg-muted);
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  padding: var(--space-1) var(--space-3);
+  padding: 3px 10px;
   border-radius: var(--radius-sm);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .btn-a11y:hover {
   background: var(--bg-subtle);
+  border-color: var(--border-strong);
 }
 
 .btn-a11y.active {
@@ -222,6 +246,21 @@ body {
 
 @media (max-width: 960px) {
   .practice-workspace-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+}
+
+/* Course Study Room Responsive 2-Column Grid (Decreased Video Size, Increased Chapters Sidebar) */
+.study-room-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(380px, 460px);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .study-room-grid {
     grid-template-columns: 1fr;
     gap: var(--space-6);
   }
@@ -582,4 +621,187 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* ==========================================================================
+   Student Landing Hero Banner & Target UI Design System
+   ========================================================================== */
+.student-hero-banner {
+  background: linear-gradient(135deg, #ebf7f3 0%, #edf7f0 45%, #e1f4f1 75%, #d2f2ed 100%);
+  border: 1px solid rgba(13, 148, 136, 0.22);
+  border-radius: 20px;
+  padding: 32px 40px;
+  margin-bottom: var(--space-8);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 20px -2px rgba(13, 148, 136, 0.08);
+}
+
+.student-hero-content {
+  max-width: 540px;
+  z-index: 2;
+  position: relative;
+}
+
+.student-hero-title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin: 0 0 12px 0;
+}
+
+.student-hero-name-highlight {
+  color: #4338ca;
+}
+
+.student-hero-subtext {
+  color: #475569;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  margin: 0 0 24px 0;
+}
+
+.student-hero-cta {
+  background-color: #0d9488;
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 10px 24px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+  transition: all 0.2s ease;
+}
+
+.student-hero-cta:hover {
+  background-color: #0f766e;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.35);
+}
+
+.student-hero-illustration {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.student-hero-img {
+  height: 200px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* Responsive Course Cards Grid */
+.courses-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.course-card-item {
+  background: #ffffff;
+  border: 1.5px solid #0d9488;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 330px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.course-card-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px -4px rgba(13, 148, 136, 0.18);
+  border-color: #0f766e;
+}
+
+/* ==========================================================================
+   Responsive Breakpoints: Laptop, Tablet, and Mobile
+   ========================================================================== */
+@media (max-width: 1180px) {
+  .courses-cards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .courses-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .student-hero-banner {
+    padding: 24px 28px;
+  }
+  .student-hero-title {
+    font-size: 1.875rem;
+  }
+  .student-hero-img {
+    height: 160px;
+  }
+  .header-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .header-right-stacked {
+    align-items: flex-end;
+    width: 100%;
+  }
+  .header-a11y-row {
+    overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 2px;
+  }
+}
+
+@media (max-width: 640px) {
+  .courses-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .header-right-stacked {
+    align-items: flex-start;
+  }
+  .header-a11y-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .header-user-row {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .student-hero-banner {
+    flex-direction: column;
+    padding: 20px;
+    align-items: flex-start;
+  }
+  .student-hero-illustration {
+    width: 100%;
+    justify-content: center;
+    margin-top: 16px;
+  }
+  .student-hero-img {
+    height: 150px;
+    max-width: 100%;
+  }
+  .student-hero-cta {
+    width: 100%;
+    justify-content: center;
+  }
 }

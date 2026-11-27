@@ -11,7 +11,6 @@ from app.api.v1.content_gen import router as content_gen_router
 from app.api.v1.diagnostic import router as diagnostic_router
 from app.api.v1.practice import router as practice_router
 from app.api.v1.struggle import router as struggle_router
-from app.api.v1.consent import router as consent_router
 from app.api.v1.tests import router as tests_router
 from app.api.v1.analytics import router as analytics_router
 
@@ -64,7 +63,6 @@ def create_app() -> FastAPI:
     app.include_router(diagnostic_router, prefix="/api/v1")
     app.include_router(practice_router, prefix="/api/v1")
     app.include_router(struggle_router, prefix="/api/v1")
-    app.include_router(consent_router, prefix="/api/v1")
     app.include_router(tests_router, prefix="/api/v1")
     app.include_router(analytics_router, prefix="/api/v1")
 

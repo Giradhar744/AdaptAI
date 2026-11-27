@@ -51,8 +51,41 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void; autoStart?:
     'registering' | 'loadingDiagnostic' | 'evaluatingDiagnostic' | 'enrolling' | null
   >(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [hasCompletedDiagnostic, setHasCompletedDiagnostic] = useState(false);
+  const [checkingHistory, setCheckingHistory] = useState(false);
 
   const activeToken = token || authContextToken || localStorage.getItem('adaptai_access_token');
+
+  // Check if student has already completed an enrollment test
+  useEffect(() => {
+    const checkDiagnosticHistory = async () => {
+      const currentToken = activeToken;
+      const sId = user?.student_id;
+      if (!currentToken || !sId) return;
+
+      setCheckingHistory(true);
+      try {
+        const res = await fetch(`/api/v1/students/${sId}/diagnostic/latest`, {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && (data.recommended_course_id || (data.assigned_age_band && data.score_percentage !== undefined))) {
+            setHasCompletedDiagnostic(true);
+            hasAutoStarted.current = true;
+          }
+        }
+      } catch {
+        // Continue
+      } finally {
+        setCheckingHistory(false);
+      }
+    };
+
+    if (isAuthenticated && user?.student_id) {
+      checkDiagnosticHistory();
+    }
+  }, [isAuthenticated, user?.student_id, activeToken]);
 
   // Sync token from AuthContext if present
   useEffect(() => {
@@ -64,11 +97,12 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void; autoStart?:
   // Auto-launch enrollment test if arrived via registration redirect or autoStart is true
   const hasAutoStarted = React.useRef(false);
   useEffect(() => {
-    if (autoStart && !hasAutoStarted.current && (isAuthenticated || activeToken) && step === 'register' && !diagnosticId && !loading) {
+    if (hasCompletedDiagnostic) return;
+    if (autoStart && !hasAutoStarted.current && (isAuthenticated || activeToken) && step === 'register' && !diagnosticId && !loading && !checkingHistory) {
       hasAutoStarted.current = true;
       handleStartDiagnostic();
     }
-  }, [autoStart, isAuthenticated, activeToken, step, diagnosticId, loading]);
+  }, [autoStart, isAuthenticated, activeToken, step, diagnosticId, loading, hasCompletedDiagnostic, checkingHistory]);
 
   // 1. Submit Registration (Guest Users)
   const handleRegister = async (e: React.FormEvent) => {
@@ -108,6 +142,11 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void; autoStart?:
 
   // 2. Start Diagnostic for Already Signed-In Students
   const handleStartDiagnostic = async () => {
+    if (hasCompletedDiagnostic) {
+      setErrorMsg('Enrollment test has already been completed. Retests are disabled.');
+      return;
+    }
+
     const currentToken = activeToken;
     if (!currentToken) {
       setErrorMsg('Please sign in to take the diagnostic test.');
@@ -212,6 +251,7 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void; autoStart?:
 
       const data = await res.json();
       setResult(data);
+      setHasCompletedDiagnostic(true);
       setStep('recommendation');
       if (refreshProfile) {
         try {
@@ -330,6 +370,25 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void; autoStart?:
       {step === 'register' && (
         <section className="card">
           {isAuthenticated && user ? (
+            hasCompletedDiagnostic ? (
+              <div style={{ textAlign: 'center', padding: 'var(--space-6) var(--space-4)' }}>
+                <div style={{ fontSize: '3rem', marginBottom: 'var(--space-2)' }}>✅</div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0 0 var(--space-2) 0' }}>
+                  Enrollment Test Completed
+                </h2>
+                <p style={{ color: 'var(--text-secondary)', maxWidth: '520px', margin: '0 auto var(--space-6) auto', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+                  You have already completed your initial enrollment test. Your performance batch has been assigned and your courses are ready in your dashboard. Retests are strictly disabled.
+                </p>
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={onBackToHome}
+                  style={{ padding: '10px 24px', fontSize: '1rem', fontWeight: 700 }}
+                >
+                  ← Return to Dashboard
+                </button>
+              </div>
+            ) : (
             /* Logged-In Student Experience: Do NOT re-ask credentials */
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
@@ -414,7 +473,7 @@ export const StudentOnboarding: React.FC<{ onBackToHome: () => void; autoStart?:
                 {loading ? 'Starting Enrollment Test...' : 'Begin Adaptive Enrollment Test →'}
               </button>
             </div>
-          ) : (
+          )) : (
             /* Guest / Registration Experience (Only for unauthenticated users) */
             <>
               <h2 style={{ fontSize: '1.5rem', marginBottom: 'var(--space-2)' }}>

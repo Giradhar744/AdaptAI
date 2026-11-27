@@ -16,8 +16,10 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Use DATABASE_URL from our app config (Supabase PostgreSQL)
-config.set_main_option("sqlalchemy.url", settings.DATABASE_SYNC_URL or settings.DATABASE_URL)
+# Use DATABASE_URL from our app config (Supabase PostgreSQL with asyncpg)
+from app.db.session import get_normalized_database_url_and_args
+raw_async_url, connect_args = get_normalized_database_url_and_args(settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", raw_async_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
@@ -41,11 +43,12 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     configuration = config.get_section(config.config_ini_section) or {}
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+    configuration["sqlalchemy.url"] = raw_async_url
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:

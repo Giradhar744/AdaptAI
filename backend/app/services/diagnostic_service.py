@@ -1,10 +1,10 @@
 from typing import List, Optional
-from sqlalchemy import select, and_, desc
+from sqlalchemy import select, and_, desc, delete, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
-from app.db.models.identity import User, Student, DisabilityProfile
+from app.db.models.identity import User, Student
 from app.db.models.content import Course
 from app.db.models.reference import DisabilityType, AgeBand
 from app.db.models.diagnostic import Diagnostic, DiagnosticAnswer
@@ -34,7 +34,6 @@ class DiagnosticService:
             .where(Student.id == student_id)
             .options(
                 selectinload(Student.age_band),
-                selectinload(Student.disabilities).selectinload(DisabilityProfile.disability_type),
             )
         )
         res = await session.execute(stmt)
@@ -43,36 +42,56 @@ class DiagnosticService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found.")
 
         # Guard: Current user must be the student or their parent
-        if current_user.role == "student" and (not current_user.student_profile or current_user.student_profile.id != student.id):
+        if current_user.role == "student" and student.user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot access other student diagnostic.")
         if current_user.role == "parent" and student.parent_user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot access other student diagnostic.")
 
-        # Guard: Enrollment test can only be taken once upon registration/onboarding; retest is disabled
+        # Guard: Enrollment test can only be taken once upon registration/onboarding; retest is strictly disabled
         completed_check = await session.execute(
             select(Diagnostic)
             .where(
                 and_(
                     Diagnostic.student_id == student.id,
-                    Diagnostic.recommended_course_id.is_not(None),
+                    (Diagnostic.recommended_course_id.is_not(None)) | (Diagnostic.score > 0.0),
                 )
             )
             .limit(1)
         )
-        if completed_check.scalar_one_or_none():
+        has_completed = completed_check.scalar_one_or_none() is not None
+        if not has_completed:
+            answers_check = await session.execute(
+                select(DiagnosticAnswer)
+                .join(Diagnostic, Diagnostic.id == DiagnosticAnswer.diagnostic_id)
+                .where(Diagnostic.student_id == student.id)
+                .limit(1)
+            )
+            if answers_check.scalar_one_or_none() is not None:
+                has_completed = True
+
+        if has_completed:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Enrollment test has already been completed. Retests are disabled.",
             )
 
-        disability_codes = [d.disability_type.code for d in student.disabilities if d.disability_type]
-        age_band_code = student.age_band.code if student.age_band else "11-15"
-
-        # Create Diagnostic row
-        first_disability_id = student.disabilities[0].disability_type_id if student.disabilities else None
-        if not first_disability_id:
-            dt_res = await session.execute(select(DisabilityType).limit(1))
-            first_disability_id = dt_res.scalar_one().id
+        # Clean up any abandoned unsubmitted diagnostic with 0 answers from previous interrupted attempt
+        res_empty = await session.execute(
+            select(Diagnostic).where(
+                and_(
+                    Diagnostic.student_id == student.id,
+                    Diagnostic.recommended_course_id.is_(None),
+                )
+            )
+        )
+        for d_empty in res_empty.scalars().all():
+            ans_count = await session.execute(
+                select(func.count(DiagnosticAnswer.id)).where(DiagnosticAnswer.diagnostic_id == d_empty.id)
+            )
+            if (ans_count.scalar() or 0) == 0:
+                await session.execute(delete(Question).where(Question.parent_id == d_empty.id))
+                await session.delete(d_empty)
+        await session.flush()
 
         import uuid
         diag_id = str(uuid.uuid4())
@@ -80,7 +99,7 @@ class DiagnosticService:
             id=diag_id,
             student_id=student.id,
             age_at_test=student.age,
-            disability_type_id=first_disability_id,
+            disability_type_id=None,
             score=0.0,
             max_score=10.0,
         )
@@ -119,11 +138,12 @@ class DiagnosticService:
 
         await session.commit()
 
+        age_label = student.age_band.label if student.age_band else "Pending Enrollment Test"
         return DiagnosticStartResponse(
             diagnostic_id=diag_id,
             student_id=student.id,
             age=student.age,
-            age_band_label=student.age_band.label if student.age_band else age_band_code,
+            age_band_label=age_label,
             questions=created_questions,
         )
 
@@ -140,9 +160,6 @@ class DiagnosticService:
             .options(
                 selectinload(Diagnostic.student)
                 .selectinload(Student.age_band),
-                selectinload(Diagnostic.student)
-                .selectinload(Student.disabilities)
-                .selectinload(DisabilityProfile.disability_type),
                 selectinload(Diagnostic.answers),
             )
         )
@@ -152,7 +169,9 @@ class DiagnosticService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnostic test not found.")
 
         student = diagnostic.student
-        if current_user.role == "student" and (not current_user.student_profile or current_user.student_profile.id != student.id):
+        if current_user.role == "student" and student.user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized.")
+        if current_user.role == "parent" and student.parent_user_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized.")
 
         # Fetch questions for this diagnostic
@@ -162,6 +181,11 @@ class DiagnosticService:
             )
         )
         questions_by_id = {q.id: q for q in q_res.scalars().all()}
+
+        # Clear any prior answers if re-submitting to ensure idempotent submission
+        await session.execute(
+            delete(DiagnosticAnswer).where(DiagnosticAnswer.diagnostic_id == diagnostic.id)
+        )
 
         # Score submitted answers
         score = 0.0
@@ -210,7 +234,7 @@ class DiagnosticService:
             role=current_user.role,
             student_id=student.id,
             age_band=student.age_band.code if student.age_band else "11-15",
-            disability_types=[d.disability_type.code for d in student.disabilities if d.disability_type],
+            disability_types=[],
         )
         decision = Decision(intent="placement_diagnostic")
 
@@ -248,14 +272,16 @@ class DiagnosticService:
         # Note: Student is NOT automatically enrolled into the recommended course.
         # The student can accept or decline on the recommendation screen, or enrol later from Explore Courses.
 
+        diag_id = diagnostic.id
+        student_id = student.id
+
         await session.commit()
-        await session.refresh(diagnostic)
 
         percentage = (score / max_score * 100) if max_score > 0 else 0.0
 
         return DiagnosticResultResponse(
-            diagnostic_id=diagnostic.id,
-            student_id=student.id,
+            diagnostic_id=diag_id,
+            student_id=student_id,
             score=score,
             max_score=max_score,
             percentage=round(percentage, 1),
@@ -299,10 +325,15 @@ class DiagnosticService:
         res = await session.execute(stmt)
         diagnostic = res.scalar_one_or_none()
         if not diagnostic:
-            # Fallback to any diagnostic for student
+            # Fallback only to a diagnostic with score or recommendation
             stmt_fallback = (
                 select(Diagnostic)
-                .where(Diagnostic.student_id == student_id)
+                .where(
+                    and_(
+                        Diagnostic.student_id == student_id,
+                        (Diagnostic.recommended_course_id.is_not(None)) | (Diagnostic.score > 0.0),
+                    )
+                )
                 .order_by(desc(Diagnostic.created_at))
                 .options(
                     selectinload(Diagnostic.student).selectinload(Student.age_band),
@@ -317,6 +348,12 @@ class DiagnosticService:
             return None
 
         percentage = (diagnostic.score / diagnostic.max_score * 100) if diagnostic.max_score > 0 else 0.0
+        diag_id = diagnostic.id
+        student_id = diagnostic.student_id
+        diag_score = diagnostic.score
+        diag_max = diagnostic.max_score
+        rec_title = diagnostic.recommended_course.title if diagnostic.recommended_course else None
+        rec_id = diagnostic.recommended_course_id
 
         if percentage < 50.0:
             target_band = "7-10"
@@ -367,18 +404,16 @@ class DiagnosticService:
             if BATCH_RANKS.get(c.get("age_band_code"), 1) >= target_rank
         ]
         exact_courses = [c for c in all_courses if c.get("age_band_code") == target_band]
-        rec_title = diagnostic.recommended_course.title if diagnostic.recommended_course else (
-            exact_courses[0]["title"] if exact_courses else (rec_courses[0]["title"] if rec_courses else None)
-        )
-        rec_id = diagnostic.recommended_course_id or (
-            exact_courses[0]["id"] if exact_courses else (rec_courses[0]["id"] if rec_courses else None)
-        )
+        if not rec_title:
+            rec_title = exact_courses[0]["title"] if exact_courses else (rec_courses[0]["title"] if rec_courses else None)
+        if not rec_id:
+            rec_id = exact_courses[0]["id"] if exact_courses else (rec_courses[0]["id"] if rec_courses else None)
 
         return DiagnosticResultResponse(
-            diagnostic_id=diagnostic.id,
-            student_id=diagnostic.student_id,
-            score=diagnostic.score,
-            max_score=diagnostic.max_score,
+            diagnostic_id=diag_id,
+            student_id=student_id,
+            score=diag_score,
+            max_score=diag_max,
             percentage=round(percentage, 1),
             score_percentage=round(percentage, 1),
             assigned_age_band=target_band,
@@ -476,13 +511,15 @@ class DiagnosticService:
         course_id: str,
         current_user: User,
     ) -> EnrolmentResponse:
-        if not current_user.student_profile:
+        s_res = await session.execute(select(Student).where(Student.user_id == current_user.id))
+        student = s_res.scalar_one_or_none()
+        if not student:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only students can enrol in courses.",
             )
 
-        student_id = current_user.student_profile.id
+        student_id = student.id
 
         course_res = await session.execute(select(Course).where(Course.id == course_id))
         course = course_res.scalar_one_or_none()

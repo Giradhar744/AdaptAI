@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { CoursePurchaseModal } from './CoursePurchaseModal';
 import { LoadingScreen } from '../../components/LoadingScreen';
-import { getStudentGroupName, formatStudentTrack, isCourseVisibleForBatch } from '../../utils/studentGroup';
+import { getStudentGroupName, formatStudentTrack } from '../../utils/studentGroup';
 
 export interface CourseItem {
   id: string;
@@ -36,22 +36,25 @@ export interface DiagnosticLatestResult {
 
 interface StudentDashboardProps {
   onEnterCourse: (courseId: string) => void;
-  onLaunchDiagnostic: () => void;
-  onOpenConsentCenter: () => void;
+  activeTab?: 'explore' | 'my_courses';
+  onTabChange?: (tab: 'explore' | 'my_courses') => void;
 }
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onEnterCourse,
-  onLaunchDiagnostic,
-  onOpenConsentCenter,
+  activeTab: controlledTab,
+  onTabChange,
 }) => {
   const { user, token, refreshProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'explore' | 'my_courses' | 'profile'>('explore');
+  const [internalTab, setInternalTab] = useState<'explore' | 'my_courses'>('explore');
+  const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
+  const setActiveTab = onTabChange || setInternalTab;
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticLatestResult | null>(null);
   const [selectedCourseForEnroll, setSelectedCourseForEnroll] = useState<CourseItem | null>(null);
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const fetchCourses = async () => {
     setLoadingCourses(true);
@@ -66,40 +69,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           setCourses(data);
         }
       }
-    } catch {
-      // Fallback sample courses if offline
-      setCourses([
-        {
-          id: 'course-sample-1',
-          teacher_id: 't-1',
-          teacher_name: 'Dr. Sarah Jenkins',
-          title: 'Natural Sciences: Living Cells & Energy',
-          subject: 'Science',
-          age_band_id: 'ab-2',
-          age_band_code: '11-15',
-          age_band_label: 'Ages 11–15',
-          description: 'Explore the building blocks of life with calm visual diagrams and spoken audio hints.',
-          fee: 0,
-          is_published: true,
-          chapters_count: 3,
-          is_enrolled: true,
-        },
-        {
-          id: 'course-sample-2',
-          teacher_id: 't-2',
-          teacher_name: 'Prof. Alan Turing',
-          title: 'Foundations of Mathematics & Patterns',
-          subject: 'Mathematics',
-          age_band_id: 'ab-1',
-          age_band_code: '7-10',
-          age_band_label: 'Ages 7–10',
-          description: 'Build intuition for numbers, shapes, and patterns at a calm, personalized pace.',
-          fee: 29.0,
-          is_published: true,
-          chapters_count: 2,
-          is_enrolled: false,
-        },
-      ]);
+    } catch (err) {
+      console.error('Failed to fetch courses from database:', err);
     } finally {
       setLoadingCourses(false);
     }
@@ -164,8 +135,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           }
         }
       }
-    } catch {
-      // Keep null or defaults
+    } catch (err) {
+      console.error('Failed to fetch diagnostic result:', err);
     }
   };
 
@@ -176,100 +147,152 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   const enrolledCourses = courses.filter((c) => c.is_enrolled);
 
-  // Active student batch: determined purely by enrollment test performance, not age!
-  const studentBatch = diagnosticResult?.assigned_age_band
-    ? getStudentGroupName(diagnosticResult.assigned_age_band)
-    : user?.age_band
-    ? getStudentGroupName(user.age_band)
-    : null;
-
   // Recommended courses base band
   const recommendedBand = diagnosticResult?.assigned_age_band || user?.age_band || '';
 
-  // Under All Available Courses, show courses of the student's batch and all higher batches
-  // (e.g. A 10-year-old placed into Batch Beta sees Batch Beta and Batch Gamma courses)
-  // If student has not yet taken the enrollment test, all courses are visible.
-  const groupCourses = studentBatch
-    ? courses.filter((c) => isCourseVisibleForBatch(c.age_band_label || c.age_band_code, studentBatch))
-    : courses;
+  // All Available Courses displays all courses from the database, highlighting the student's batch with "★ Best Match"
+  const groupCourses = courses;
 
-  const subjects = ['all', ...Array.from(new Set(groupCourses.map((c) => c.subject)))];
+  const standardSubjects = ['Language Arts', 'Science', 'Biology', 'Mathematics'];
+  const subjects = ['all', ...Array.from(new Set([...groupCourses.map((c) => c.subject), ...standardSubjects])).filter(Boolean)];
   const activeSubject = subjects.includes(selectedSubjectFilter) ? selectedSubjectFilter : 'all';
-  const filteredCourses = activeSubject === 'all'
+  const subjectFilteredCourses = activeSubject === 'all'
     ? groupCourses
     : groupCourses.filter((c) => c.subject === activeSubject);
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const filteredExploreCourses = subjectFilteredCourses.filter((c) => {
+    if (!normalizedQuery) return true;
+    const title = (c.title || '').toLowerCase();
+    const desc = (c.description || '').toLowerCase();
+    const subj = (c.subject || '').toLowerCase();
+    const teacher = (c.teacher_name || '').toLowerCase();
+    return title.includes(normalizedQuery) || desc.includes(normalizedQuery) || subj.includes(normalizedQuery) || teacher.includes(normalizedQuery);
+  });
+
+  const filteredEnrolledCourses = enrolledCourses.filter((c) => {
+    if (!normalizedQuery) return true;
+    const title = (c.title || '').toLowerCase();
+    const desc = (c.description || '').toLowerCase();
+    const subj = (c.subject || '').toLowerCase();
+    const teacher = (c.teacher_name || '').toLowerCase();
+    return title.includes(normalizedQuery) || desc.includes(normalizedQuery) || subj.includes(normalizedQuery) || teacher.includes(normalizedQuery);
+  });
+
   return (
-    <div>
-      {/* 3 Main Tabs Navigation */}
+    <div id="courses-section">
+      {/* Navigation Tabs on Left + Persistent Search Bar on Right (Same Line / Same X-Axis) */}
       <div
         style={{
           display: 'flex',
-          gap: 'var(--space-2)',
-          borderBottom: '2px solid var(--border-subtle)',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '1.5px solid var(--border-subtle, #e2e8f0)',
           marginBottom: 'var(--space-6)',
-          overflowX: 'auto',
+          flexWrap: 'wrap',
+          gap: 'var(--space-3)',
         }}
       >
-        <button
-          type="button"
-          onClick={() => setActiveTab('explore')}
-          style={{
-            padding: '10px 18px',
-            fontSize: '1rem',
-            fontWeight: 700,
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'explore' ? '3px solid var(--primary)' : '3px solid transparent',
-            color: activeTab === 'explore' ? 'var(--primary)' : 'var(--text-secondary)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <span>🔍</span> Explore Courses
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('explore')}
+            style={{
+              padding: '10px 4px 12px 4px',
+              fontSize: '1rem',
+              fontWeight: activeTab === 'explore' ? 700 : 600,
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'explore' ? '3px solid var(--primary, #0f766e)' : '3px solid transparent',
+              color: activeTab === 'explore' ? 'var(--primary, #0f766e)' : 'var(--text-secondary, #64748b)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>🔍</span> Explore Courses
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('my_courses')}
-          style={{
-            padding: '10px 18px',
-            fontSize: '1rem',
-            fontWeight: 700,
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'my_courses' ? '3px solid var(--primary)' : '3px solid transparent',
-            color: activeTab === 'my_courses' ? 'var(--primary)' : 'var(--text-secondary)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <span>📚</span> My Courses ({enrolledCourses.length})
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('my_courses')}
+            style={{
+              padding: '10px 4px 12px 4px',
+              fontSize: '1rem',
+              fontWeight: activeTab === 'my_courses' ? 700 : 600,
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'my_courses' ? '3px solid var(--primary, #0f766e)' : '3px solid transparent',
+              color: activeTab === 'my_courses' ? 'var(--primary, #0f766e)' : 'var(--text-secondary, #64748b)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>📚</span> My Courses ({enrolledCourses.length})
+          </button>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('profile')}
-          style={{
-            padding: '10px 18px',
-            fontSize: '1rem',
-            fontWeight: 700,
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'profile' ? '3px solid var(--primary)' : '3px solid transparent',
-            color: activeTab === 'profile' ? 'var(--primary)' : 'var(--text-secondary)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <span>👤</span> My Profile
-        </button>
+        {/* Unified Search Input for Both Sections */}
+        <div style={{ position: 'relative', width: '100%', maxWidth: '340px', paddingBottom: '6px' }}>
+          <span style={{ position: 'absolute', left: '14px', top: 'calc(50% - 3px)', transform: 'translateY(-50%)', color: '#64748b', fontSize: '0.9375rem', pointerEvents: 'none' }}>
+            🔍
+          </span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={activeTab === 'explore' ? 'Search courses by title or description...' : 'Search your enrolled courses...'}
+            aria-label="Search courses"
+            style={{
+              width: '100%',
+              padding: '8px 36px 8px 38px',
+              fontSize: '0.875rem',
+              borderRadius: '9999px',
+              border: '1.5px solid #cbd5e1',
+              outline: 'none',
+              background: '#ffffff',
+              color: '#0f172a',
+              transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = '#0f766e';
+              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(15, 118, 110, 0.15)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '#cbd5e1';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: 'calc(50% - 3px)',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ============================================================== */}
@@ -277,87 +300,44 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ============================================================== */}
       {activeTab === 'explore' && (
         <div>
-          {/* Diagnostic Enrollment Recommendation Card */}
-          {diagnosticResult ? (
-            <div
-              className="card"
-              style={{
-                marginBottom: 'var(--space-6)',
-                borderLeft: '6px solid var(--primary)',
-                background: 'linear-gradient(135deg, rgba(13, 148, 136, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-                <div>
-                  <span className="brand-badge" style={{ background: '#0d9488', color: '#ffffff', marginBottom: 'var(--space-2)' }}>
-                    ✨ Recommended For You
-                  </span>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 'var(--space-1) 0' }}>
-                    Personalized based on your Enrollment Test Score ({diagnosticResult.score_percentage ?? diagnosticResult.percentage ?? 0}%)
-                  </h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-                    We recommend best suited courses just for you.
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="card"
-              style={{
-                marginBottom: 'var(--space-6)',
-                borderLeft: '6px solid #6366f1',
-                background: 'rgba(99, 102, 241, 0.06)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 'var(--space-3)',
-              }}
-            >
-              <div>
-                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: '0 0 var(--space-1) 0' }}>
-                  🎯 Want Personalized Course Recommendations & Batch Enrollment?
-                </h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-                  Take a calm enrollment test to determine your learning batch (Batch Alpha, Beta, or Gamma) based entirely on your performance, not your age!
-                </p>
-              </div>
-              <button
-                type="button"
-                className="button-primary"
-                onClick={onLaunchDiagnostic}
-                style={{ padding: '8px 16px', fontSize: '0.875rem' }}
-              >
-                Start Enrollment Test →
-              </button>
-            </div>
-          )}
-
-          {/* Subject Filter Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          {/* Controls Bar: Title on Left, Subject Filter Pills on Right */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-6)', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
             <div>
-              <h2 style={{ fontSize: '1.375rem', fontWeight: 700, margin: 0 }}>All Available Courses</h2>
-              <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                {filteredCourses.length} {filteredCourses.length === 1 ? 'course' : 'courses'} found
-              </span>
+              <h2 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: 0 }}>
+                All Available Courses
+              </h2>
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary, #64748b)', marginTop: '4px' }}>
+                {filteredExploreCourses.length} {filteredExploreCourses.length === 1 ? 'course' : 'courses'} found
+              </div>
             </div>
 
-            {subjects.length > 2 && (
-              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                {subjects.map((subj) => (
+            {/* Subject Filter Pills */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {subjects.map((subj) => {
+                const isActive = selectedSubjectFilter === subj;
+                return (
                   <button
                     key={subj}
                     type="button"
                     onClick={() => setSelectedSubjectFilter(subj)}
-                    className={selectedSubjectFilter === subj ? 'button-primary' : 'btn-a11y'}
-                    style={{ padding: '4px 12px', fontSize: '0.8125rem', textTransform: 'capitalize' }}
+                    style={{
+                      padding: '6px 16px',
+                      fontSize: '0.8125rem',
+                      fontWeight: isActive ? 600 : 500,
+                      borderRadius: '9999px',
+                      cursor: 'pointer',
+                      border: isActive ? 'none' : '1px solid var(--border-subtle, #e2e8f0)',
+                      background: isActive ? 'var(--primary, #0f766e)' : '#ffffff',
+                      color: isActive ? '#ffffff' : 'var(--text-primary, #334155)',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isActive ? '0 2px 6px rgba(15, 118, 110, 0.25)' : 'none',
+                    }}
                   >
                     {subj === 'all' ? 'All Subjects' : subj}
                   </button>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
 
           {loadingCourses ? (
@@ -367,13 +347,32 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               subtitle="Fetching tailored courses matching your age band and accommodations..."
               variant="card"
             />
-          ) : filteredCourses.length === 0 ? (
+          ) : filteredExploreCourses.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
-              <p style={{ color: 'var(--text-secondary)' }}>No courses match your filter.</p>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔍</div>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '6px' }}>
+                {searchQuery ? `No courses found matching "${searchQuery}"` : 'No courses match your filter.'}
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px' }}>
+                Try searching with different keywords or clear your active filters.
+              </p>
+              {(searchQuery || selectedSubjectFilter !== 'all') && (
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedSubjectFilter('all');
+                  }}
+                  style={{ padding: '8px 16px', fontSize: '0.875rem' }}
+                >
+                  Clear All Filters ↻
+                </button>
+              )}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: 'var(--space-4)' }}>
-              {filteredCourses.map((c) => {
+            <div className="courses-cards-grid">
+              {filteredExploreCourses.map((c) => {
                 const isRecommended =
                   c.age_band_code === recommendedBand ||
                   c.age_band_code === diagnosticResult?.progression_age_band;
@@ -381,63 +380,116 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 return (
                   <div
                     key={c.id}
-                    className="card"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      border: isRecommended ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
+                    className="course-card-item"
+                    onClick={() => {
+                      if (c.is_enrolled) {
+                        onEnterCourse(c.id);
+                      } else {
+                        setSelectedCourseForEnroll(c);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (c.is_enrolled) {
+                          onEnterCourse(c.id);
+                        } else {
+                          setSelectedCourseForEnroll(c);
+                        }
+                      }
                     }}
                   >
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)', minHeight: '28px' }}>
-                        <span className="brand-badge">{c.subject}</span>
+                      {/* Top Badges Row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', minHeight: '26px' }}>
+                        <span
+                          style={{
+                            background: '#ccfbf1',
+                            color: '#0f766e',
+                            padding: '3px 12px',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {c.subject}
+                        </span>
                         {isRecommended && (
                           <span
-                            className="brand-badge"
                             style={{
-                              background: 'var(--primary)',
+                              background: '#0f766e',
                               color: '#ffffff',
+                              padding: '3px 12px',
+                              borderRadius: '9999px',
                               fontSize: '0.75rem',
                               fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}
                           >
-                            ⭐ Best Match
+                            ★ Best Match
                           </span>
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-                        <span className="btn-a11y" style={{ fontSize: '0.75rem' }}>
+                      {/* Batch Track Badge */}
+                      <div style={{ marginBottom: '10px' }}>
+                        <span
+                          style={{
+                            background: '#f1f5f9',
+                            color: '#475569',
+                            padding: '2px 10px',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            display: 'inline-block',
+                          }}
+                        >
                           {formatStudentTrack(c.age_band_label || c.age_band_code)}
                         </span>
                       </div>
 
-                      <h3 style={{ fontSize: '1.1875rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                      {/* Course Title */}
+                      <h3 style={{ fontSize: '1.1875rem', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0', lineHeight: 1.3 }}>
                         {c.title}
                       </h3>
 
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: '1.5', marginBottom: 'var(--space-4)' }}>
+                      {/* Course Description */}
+                      <p style={{ color: '#475569', fontSize: '0.875rem', lineHeight: 1.5, margin: '0 0 16px 0', flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {c.description || 'Learn key concepts with friendly lessons, spoken audio hints, and daily practice.'}
                       </p>
                     </div>
 
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)', fontSize: '0.875rem' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>
-                          Teacher: <strong>{c.teacher_name}</strong>
-                        </span>
-                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {c.fee > 0 ? `$${c.fee.toFixed(2)}` : 'Free'}
-                        </span>
-                      </div>
+                    {/* Card Footer: Teacher on Left, Price on Right */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+                      <span style={{ color: '#64748b' }}>
+                        Teacher: <strong style={{ color: '#0f172a' }}>{c.teacher_name}</strong>
+                      </span>
+                      <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9375rem' }}>
+                        {c.fee > 0 ? `$${c.fee.toFixed(2)}` : 'Free'}
+                      </span>
+                    </div>
 
+                    {/* Action Button */}
+                    <div style={{ marginTop: '12px' }}>
                       {c.is_enrolled ? (
                         <button
                           type="button"
                           className="button-primary"
-                          onClick={() => onEnterCourse(c.id)}
-                          style={{ width: '100%', padding: '8px 12px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEnterCourse(c.id);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            justifyContent: 'center',
+                            fontSize: '0.9375rem',
+                            fontWeight: 600,
+                          }}
                         >
                           Enter Course Room →
                         </button>
@@ -445,8 +497,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                         <button
                           type="button"
                           className="button-secondary"
-                          onClick={() => setSelectedCourseForEnroll(c)}
-                          style={{ width: '100%', padding: '8px 12px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedCourseForEnroll(c);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            justifyContent: 'center',
+                            fontSize: '0.9375rem',
+                            fontWeight: 600,
+                          }}
                         >
                           Join Course ({c.fee > 0 ? `$${c.fee.toFixed(2)}` : 'Free'}) →
                         </button>
@@ -465,9 +526,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ============================================================== */}
       {activeTab === 'my_courses' && (
         <div>
-          <h2 style={{ fontSize: '1.375rem', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
-            Courses You Are Enrolled In
-          </h2>
+          {/* Section Header */}
+          <div style={{ marginBottom: 'var(--space-6)' }}>
+            <h2 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: 0 }}>
+              Courses You Are Enrolled In
+            </h2>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary, #64748b)', marginTop: '4px' }}>
+              {filteredEnrolledCourses.length} {filteredEnrolledCourses.length === 1 ? 'course' : 'courses'} enrolled
+            </div>
+          </div>
 
           {enrolledCourses.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 'var(--space-12) var(--space-4)' }}>
@@ -487,9 +554,27 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 Browse Explore Courses →
               </button>
             </div>
+          ) : filteredEnrolledCourses.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔍</div>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '6px' }}>
+                No enrolled courses found matching "{searchQuery}"
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px' }}>
+                Try searching for a different keyword or clear your search to view all courses.
+              </p>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setSearchQuery('')}
+                style={{ padding: '8px 16px', fontSize: '0.875rem' }}
+              >
+                Clear Search ↻
+              </button>
+            </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: 'var(--space-4)' }}>
-              {enrolledCourses.map((c) => {
+            <div className="courses-cards-grid">
+              {filteredEnrolledCourses.map((c) => {
                 const isRecommended =
                   c.age_band_code === recommendedBand ||
                   c.age_band_code === diagnosticResult?.progression_age_band;
@@ -497,65 +582,112 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 return (
                   <div
                     key={c.id}
-                    className="card"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      border: isRecommended ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
+                    className="course-card-item"
+                    onClick={() => onEnterCourse(c.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onEnterCourse(c.id);
+                      }
                     }}
                   >
                     <div>
                       {/* Top status row: Enrolled badge on left, Best Match badge on right */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)', minHeight: '28px' }}>
-                        <span className="brand-badge" style={{ background: '#059669', color: '#ffffff', fontWeight: 600 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', minHeight: '26px' }}>
+                        <span
+                          style={{
+                            background: '#059669',
+                            color: '#ffffff',
+                            padding: '3px 12px',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                          }}
+                        >
                           Enrolled
                         </span>
                         {isRecommended && (
                           <span
-                            className="brand-badge"
                             style={{
-                              background: 'var(--primary)',
+                              background: '#0f766e',
                               color: '#ffffff',
+                              padding: '3px 12px',
+                              borderRadius: '9999px',
                               fontSize: '0.75rem',
                               fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}
                           >
-                            ⭐ Best Match
+                            ★ Best Match
                           </span>
                         )}
                       </div>
 
                       {/* Course classification row: Subject and Batch Track */}
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
-                        <span className="brand-badge">{c.subject}</span>
-                        <span className="btn-a11y" style={{ fontSize: '0.75rem' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            background: '#ccfbf1',
+                            color: '#0f766e',
+                            padding: '3px 12px',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {c.subject}
+                        </span>
+                        <span
+                          style={{
+                            background: '#f1f5f9',
+                            color: '#475569',
+                            padding: '2px 10px',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                          }}
+                        >
                           {formatStudentTrack(c.age_band_label || c.age_band_code)}
                         </span>
                       </div>
 
-                      <h3 style={{ fontSize: '1.1875rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                      <h3 style={{ fontSize: '1.1875rem', fontWeight: 700, color: '#0f172a', margin: '0 0 8px 0', lineHeight: 1.3 }}>
                         {c.title}
                       </h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: '1.5', marginBottom: 'var(--space-4)' }}>
+                      <p style={{ color: '#475569', fontSize: '0.875rem', lineHeight: 1.5, margin: '0 0 16px 0', flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {c.description || 'Watch lessons, take daily practice with AI speech hints, and complete chapter tests.'}
                       </p>
                     </div>
 
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)', fontSize: '0.875rem' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>
-                          Teacher: <strong>{c.teacher_name}</strong>
-                        </span>
-                        <span style={{ color: 'var(--text-secondary)' }}>
-                          Chapters: <strong>{c.chapters_count || 1}</strong>
-                        </span>
-                      </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+                      <span style={{ color: '#64748b' }}>
+                        Teacher: <strong style={{ color: '#0f172a' }}>{c.teacher_name}</strong>
+                      </span>
+                      <span style={{ color: '#0f766e', fontWeight: 700 }}>
+                        {c.chapters_count || 1} {c.chapters_count === 1 ? 'Chapter' : 'Chapters'}
+                      </span>
+                    </div>
+
+                    {/* Action Button */}
+                    <div style={{ marginTop: '12px' }}>
                       <button
                         type="button"
                         className="button-primary"
-                        onClick={() => onEnterCourse(c.id)}
-                        style={{ width: '100%', padding: '8px 12px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEnterCourse(c.id);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          justifyContent: 'center',
+                          fontSize: '0.9375rem',
+                          fontWeight: 600,
+                        }}
                       >
                         Enter Course Room →
                       </button>
@@ -565,118 +697,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ============================================================== */}
-      {/* TAB 3: MY PROFILE */}
-      {/* ============================================================== */}
-      {activeTab === 'profile' && (
-        <div style={{ maxWidth: '720px' }}>
-          <h2 style={{ fontSize: '1.375rem', fontWeight: 700, marginBottom: 'var(--space-4)' }}>
-            Your Learning Profile
-          </h2>
-
-          {/* Student Info Card */}
-          <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-              <div
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: 'var(--primary)',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.5rem',
-                  fontWeight: 800,
-                }}
-              >
-                {user?.display_name ? user.display_name.charAt(0).toUpperCase() : 'S'}
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 var(--space-1) 0' }}>
-                  {user?.display_name || 'Student'}
-                </h3>
-                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  {user?.email}
-                </span>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-3)', fontSize: '0.875rem' }}>
-              <div>
-                <span style={{ color: 'var(--text-secondary)' }}>Age:</span>{' '}
-                <strong>{user?.age || 'Not specified'}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-secondary)' }}>Batch:</span>{' '}
-                <strong>{studentBatch || 'Pending Enrollment Test'}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-secondary)' }}>Learning Needs:</span>{' '}
-                <strong>{user?.disabilities?.[0]?.label || 'General Personalized'}</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Diagnostic Enrollment Card */}
-          <div className="card" style={{ marginBottom: 'var(--space-4)', borderLeft: '6px solid var(--primary)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>
-                🎯 Enrollment Test Status
-              </h3>
-              {!diagnosticResult && (
-                <button
-                  type="button"
-                  className="button-primary"
-                  onClick={onLaunchDiagnostic}
-                  style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-                >
-                  Take Enrollment Test →
-                </button>
-              )}
-            </div>
-
-            {diagnosticResult ? (
-              <div>
-                <p style={{ fontSize: '0.9375rem', margin: 0 }}>
-                  Latest score:{' '}
-                  <strong>
-                    {diagnosticResult.score_percentage ?? diagnosticResult.percentage ?? 0}%
-                  </strong>{' '}
-                  ({diagnosticResult.correct_count ?? diagnosticResult.score ?? 0} of{' '}
-                  {diagnosticResult.total_questions ?? diagnosticResult.max_score ?? 10} questions correct).
-                </p>
-              </div>
-            ) : (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-                You have not completed the enrollment test yet. Take it to unlock custom difficulty recommendations!
-              </p>
-            )}
-          </div>
-
-          {/* Privacy & Accommodations Ledger Card */}
-          <div className="card" style={{ borderLeft: '6px solid #6366f1' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>
-                🛡️ Learning Accommodations & Privacy
-              </h3>
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={onOpenConsentCenter}
-                style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-              >
-                Open Consent Ledger →
-              </button>
-            </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-              All AI teaching accommodations (like audio narration, extra time, or simplified text) require your clear approval and are logged securely.
-            </p>
-          </div>
         </div>
       )}
 
