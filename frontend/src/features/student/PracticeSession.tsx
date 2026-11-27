@@ -252,12 +252,83 @@ export const PracticeSession: React.FC<PracticeSessionProps> = ({
       },
       token
     );
+    if (token) {
+      tracker.connectWebSocket(token);
+    }
     trackerRef.current = tracker;
 
     return () => {
       tracker.disconnect();
     };
   }, [sessionRef, studentId, token]);
+
+  // Proactive struggle detector on prolonged idle dwell-time (>45s) without answering
+  useEffect(() => {
+    if (secondsElapsed >= 45 && !selectedOption && !isSubmitted && !isBreakActive && !struggleAlert) {
+      if (trackerRef.current) {
+        trackerRef.current.dispatchSignal({
+          session_ref: sessionRef,
+          signal_type: 'input_hesitation',
+          value: {
+            question_id: currentQ?.id,
+            idle_time_ms: secondsElapsed * 1000,
+            dwell_prolonged: true,
+          },
+        });
+      }
+
+      fetch('/api/v1/struggle/assess', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          session_ref: sessionRef,
+          signals: [
+            {
+              session_ref: sessionRef,
+              signal_type: 'input_hesitation',
+              value: {
+                question_id: currentQ?.id,
+                idle_time_ms: secondsElapsed * 1000,
+                dwell_prolonged: true,
+              },
+            },
+          ],
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: StruggleAssessmentEvent | null) => {
+          if (data && (data.risk_level === 'high' || data.risk_level === 'medium')) {
+            setStruggleAlert(data);
+          } else {
+            setStruggleAlert({
+              id: 'idle-dwell-alert',
+              student_id: studentId,
+              score: 0.72,
+              risk_level: 'medium',
+              features: { dwell_time: secondsElapsed },
+              contributing_factors: ['prolonged_inactivity'],
+              proposals: [],
+              recorded_at: new Date().toISOString(),
+            });
+          }
+        })
+        .catch(() => {
+          setStruggleAlert({
+            id: 'idle-dwell-alert',
+            student_id: studentId,
+            score: 0.72,
+            risk_level: 'medium',
+            features: { dwell_time: secondsElapsed },
+            contributing_factors: ['prolonged_inactivity'],
+            proposals: [],
+            recorded_at: new Date().toISOString(),
+          });
+        });
+    }
+  }, [secondsElapsed, selectedOption, isSubmitted, isBreakActive, struggleAlert, sessionRef, token, currentQ?.id, studentId]);
 
   // Pre-load speech synthesis voices
   useEffect(() => {

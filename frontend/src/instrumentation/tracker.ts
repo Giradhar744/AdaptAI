@@ -179,7 +179,7 @@ export class BehaviourTracker {
     return null;
   }
 
-  private dispatchSignal(signal: TelemetrySignal) {
+  public dispatchSignal(signal: TelemetrySignal) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'signal', ...signal }));
     } else {
