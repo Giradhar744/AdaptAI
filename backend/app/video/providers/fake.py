@@ -14,4 +14,9 @@ class FakeVideoStore:
         )
 
     def playback_ref(self, video_id: str) -> str:
+        url = video_id.strip() if video_id else ""
+        if url.startswith(("http://", "https://")):
+            return url
+        if url.startswith(("www.", "youtube.com", "youtu.be", "player.vimeo.com", "vimeo.com")):
+            return f"https://{url}"
         return f"/api/v1/videos/{video_id}/stream.mp4"

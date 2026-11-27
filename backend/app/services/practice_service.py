@@ -31,10 +31,20 @@ class PracticeService:
         current_user: User,
         mode: str = "independent",
     ) -> DPPSessionResponse:
-        if not current_user.student_profile:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only students can start DPP sessions.")
-
-        student_id = current_user.student_profile.id
+        # Check for student profile, or look up/create a preview student for teacher/guest
+        student_id: Optional[str] = None
+        if current_user.student_profile:
+            student_id = current_user.student_profile.id
+        else:
+            # Look up any existing student profile or create an ephemeral test student
+            any_stu = (await session.execute(select(Student))).scalars().first()
+            if any_stu:
+                student_id = any_stu.id
+            else:
+                student = Student(user_id=current_user.id, current_age_band_id="")
+                session.add(student)
+                await session.flush()
+                student_id = student.id
 
         # Fetch DPP with questions
         res = await session.execute(

@@ -39,11 +39,35 @@ export class BehaviourTracker {
   private studentId: string;
   private ws: WebSocket | null = null;
   private onStruggleDetected?: (assessment: StruggleAssessmentEvent) => void;
+  private token?: string | null;
 
-  constructor(sessionRef: string, studentId: string, onStruggleDetected?: (assessment: StruggleAssessmentEvent) => void) {
+  constructor(
+    sessionRef: string,
+    studentId: string,
+    onStruggleDetected?: (assessment: StruggleAssessmentEvent) => void,
+    token?: string | null
+  ) {
     this.sessionRef = sessionRef;
     this.studentId = studentId;
     this.onStruggleDetected = onStruggleDetected;
+    this.token = token;
+  }
+
+  public setToken(token?: string | null) {
+    this.token = token;
+  }
+
+  private getHeaders(): Record<string, string> {
+    const token =
+      this.token ||
+      (typeof window !== 'undefined' ? localStorage.getItem('adaptai_access_token') : null);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
   }
 
   public getStudentId(): string {
@@ -128,14 +152,14 @@ export class BehaviourTracker {
       // 1. Post telemetry signals
       await fetch('/api/v1/telemetry/signals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ signals }),
       });
 
       // 2. Request proactive struggle evaluation
       const assessRes = await fetch('/api/v1/struggle/assess', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           session_ref: this.sessionRef,
         }),
@@ -161,7 +185,7 @@ export class BehaviourTracker {
     } else {
       fetch('/api/v1/telemetry/signals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ signals: [signal] }),
       }).catch(() => {});
     }

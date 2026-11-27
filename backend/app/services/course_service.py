@@ -266,6 +266,18 @@ class CourseService:
                 )
                 for l in ch.lectures
             ]
+            # Associate chapter with any DPP belonging to its lectures or topics
+            ch_dpp_id = None
+            for l in ch.lectures:
+                if dpps_by_lecture.get(l.id):
+                    ch_dpp_id = dpps_by_lecture[l.id]
+                    break
+            if not ch_dpp_id:
+                for t in ch.topics:
+                    if dpps_by_topic.get(t.id):
+                        ch_dpp_id = dpps_by_topic[t.id]
+                        break
+
             chapters_response.append(
                 ChapterResponse(
                     id=ch.id,
@@ -274,6 +286,7 @@ class CourseService:
                     position=ch.position,
                     topics=topics_resp,
                     lectures=lectures_resp,
+                    dpp_id=ch_dpp_id,
                     dpp_completed=ch_dpp_done,
                     test_unlocked=ch_test_unlocked or is_owner,
                     chapter_test_id=tests_by_chapter.get(ch.id),

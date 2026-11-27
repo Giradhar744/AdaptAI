@@ -115,10 +115,20 @@ class FakeLLMProvider:
 
         # 3. ZPD Hint Fixture
         if "hint_text" in schema.get("properties", {}) or "scaffold_level" in schema.get("properties", {}):
+            lower_prompt = prompt.lower()
+            if "sentence" in lower_prompt or "capital" in lower_prompt or "english" in lower_prompt:
+                hint_msg = "A complete sentence needs a naming word (subject) and an action word (verb). Check which option expresses a complete thought!"
+            elif "cell" in lower_prompt or "wall" in lower_prompt or "plant" in lower_prompt:
+                hint_msg = "The plant's cell wall is like a tough outer frame. It gives physical support to keep the plant standing tall."
+            elif "water" in lower_prompt or "ice" in lower_prompt or "heat" in lower_prompt:
+                hint_msg = "Think about how temperature changes the state of liquid water into a solid or gas."
+            else:
+                hint_msg = "Take a close look at the question keywords and eliminate choices that contradict the main lesson concept."
+
             return {
-                "hint_text": "Remember that steam rises from a hot kettle because heat turns liquid into gas.",
+                "hint_text": hint_msg,
                 "scaffold_level": "partial_hint",
-                "rationale": "Gives a familiar real-world cue without stating the multiple-choice option directly.",
+                "rationale": "Contextual pedagogical clue tailored to the question without giving away the direct answer.",
             }
 
         # Generic fallback that populates required properties with reasonable types

@@ -62,9 +62,11 @@ wheels/
 *.egg
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+*.tsbuildinfo
 
 # ------------------------------------------------------------------------------
 # Node.js & Frontend Builds
@@ -101,3 +103,5 @@ backend/uploads/
 .DS_Store
 Thumbs.db
 desktop.ini
+*.swp
+*.swo

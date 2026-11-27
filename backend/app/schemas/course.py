@@ -58,6 +58,7 @@ class ChapterResponse(BaseModel):
     position: int
     topics: List[TopicResponse] = Field(default_factory=list)
     lectures: List[LectureResponse] = Field(default_factory=list)
+    dpp_id: Optional[str] = None
     dpp_completed: bool = False
     test_unlocked: bool = False
     chapter_test_id: Optional[str] = None

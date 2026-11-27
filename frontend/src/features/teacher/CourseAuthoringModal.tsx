@@ -677,7 +677,7 @@ export const CourseAuthoringModal: React.FC<CourseAuthoringModalProps> = ({
                 type="text"
                 required
                 className="input-a11y"
-                placeholder="https://www.w3schools.com/html/mov_bbb.mp4"
+                placeholder="https://www.youtube.com/watch?v=... or direct MP4 URL"
                 value={videoRef}
                 onChange={(e) => setVideoRef(e.target.value)}
               />

@@ -20,6 +20,7 @@ interface Chapter {
   title: string;
   position: number;
   lectures: Lecture[];
+  dpp_id?: string | null;
   dpp_completed: boolean;
   test_unlocked: boolean;
   chapter_test_id?: string | null;
@@ -33,6 +34,50 @@ interface CourseDetail {
   description?: string;
   fee: number;
   chapters: Chapter[];
+}
+
+function getEmbedUrl(rawUrl: string | null | undefined): {
+  type: 'youtube' | 'vimeo' | 'html5' | 'none';
+  embedUrl?: string;
+} {
+  if (!rawUrl) return { type: 'none' };
+
+  let trimmed = rawUrl.trim();
+  if (trimmed.startsWith('//')) {
+    trimmed = `https:${trimmed}`;
+  } else if (
+    trimmed.startsWith('www.') ||
+    trimmed.startsWith('youtube.com') ||
+    trimmed.startsWith('youtu.be')
+  ) {
+    trimmed = `https://${trimmed}`;
+  }
+
+  // YouTube match: standard watch, youtu.be short, embed, shorts
+  const ytMatch = trimmed.match(
+    /(?:youtube(?:-nocookie)?\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i
+  );
+  if (ytMatch && ytMatch[1]) {
+    return {
+      type: 'youtube',
+      embedUrl: `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?autoplay=0&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&enablejsapi=1`,
+    };
+  }
+
+  // Vimeo match
+  const vimeoMatch = trimmed.match(/(?:vimeo\.com\/)(\d+)/i);
+  if (vimeoMatch && vimeoMatch[1]) {
+    return {
+      type: 'vimeo',
+      embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}`,
+    };
+  }
+
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+    return { type: 'html5', embedUrl: trimmed };
+  }
+
+  return { type: 'none' };
 }
 
 interface CourseStudyRoomProps {
@@ -57,16 +102,28 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
   const [generatingDpp, setGeneratingDpp] = useState(false);
 
   const handleGenerateDppForActiveLecture = async () => {
-    if (!activeLecture) return;
+    if (!activeChapter && !activeLecture) return;
     setGeneratingDpp(true);
     setActionMessage('✨ AI is creating 4-choice practice questions for this lesson...');
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`/api/v1/lectures/${activeLecture.id}/dpp/generate`, {
+      const endpoint = activeLecture
+        ? `/api/v1/lectures/${activeLecture.id}/dpp/generate`
+        : `/api/v1/content/generate-dpp`;
+      const body = activeLecture
+        ? undefined
+        : JSON.stringify({
+            chapter_id: activeChapter?.id,
+            topic_prompt: `Lesson on ${activeChapter?.title}`,
+            num_questions: 4,
+          });
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers,
+        body,
       });
 
       if (res.ok) {
@@ -79,13 +136,10 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
         }, 1200);
       } else {
         const err = await res.json().catch(() => ({}));
-        setActionMessage(err.detail || 'Starting standard practice session...');
-        setTimeout(() => {
-          onLaunchPractice(undefined, activeChapter?.id, activeChapter?.title, course?.title);
-        }, 1200);
+        setActionMessage(err.detail || 'Could not generate DPP for this chapter.');
       }
     } catch {
-      onLaunchPractice(undefined, activeChapter?.id, activeChapter?.title, course?.title);
+      setActionMessage('Failed to connect to question service.');
     } finally {
       setGeneratingDpp(false);
     }
@@ -216,7 +270,7 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
   }
 
   return (
-    <div style={{ maxWidth: '1040px', margin: '0 auto', padding: 'var(--space-4) 0' }}>
+    <div style={{ width: '100%', margin: '0 auto', padding: 'var(--space-4) 0' }}>
       {generatingDpp && (
         <LoadingScreen
           preset="aiGenerating"
@@ -299,24 +353,46 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
                   position: 'relative',
                 }}
               >
-                {activeLecture.playback_url ? (
-                  <video
-                    key={activeLecture.playback_url}
-                    controls
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                    src={activeLecture.playback_url}
-                  >
-                    Your browser does not support HTML5 video.
-                  </video>
-                ) : (
-                  <div style={{ textAlign: 'center', color: '#94a3b8', padding: 'var(--space-6)' }}>
-                    <div style={{ fontSize: '2.5rem', marginBottom: 'var(--space-2)' }}>📺</div>
-                    <div style={{ fontWeight: 600, color: '#f8fafc' }}>{activeLecture.title}</div>
-                    <div style={{ fontSize: '0.8125rem', marginTop: 'var(--space-1)' }}>
-                      Lesson video loaded and ready to play.
+                {(() => {
+                  const media = getEmbedUrl(activeLecture.playback_url || activeLecture.video_ref);
+                  if (media.type === 'youtube' || media.type === 'vimeo') {
+                    return (
+                      <iframe
+                        key={media.embedUrl}
+                        src={media.embedUrl}
+                        title={activeLecture.title}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          border: 'none',
+                        }}
+                      />
+                    );
+                  }
+                  if (media.type === 'html5' && media.embedUrl) {
+                    return (
+                      <video
+                        key={media.embedUrl}
+                        controls
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        src={media.embedUrl}
+                      >
+                        Your browser does not support HTML5 video.
+                      </video>
+                    );
+                  }
+                  return (
+                    <div style={{ textAlign: 'center', color: '#94a3b8', padding: 'var(--space-6)' }}>
+                      <div style={{ fontSize: '2.5rem', marginBottom: 'var(--space-2)' }}>📺</div>
+                      <div style={{ fontWeight: 600, color: '#f8fafc' }}>{activeLecture.title}</div>
+                      <div style={{ fontSize: '0.8125rem', marginTop: 'var(--space-1)' }}>
+                        Lesson video loaded and ready to play.
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               {/* Lesson Details & Completion Trigger */}
@@ -392,37 +468,43 @@ export const CourseStudyRoom: React.FC<CourseStudyRoomProps> = ({
                   <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', minHeight: '38px' }}>
                     Solve 4-choice questions with real-time text and speech hints tailored to your learning needs.
                   </p>
-                  {activeLecture?.dpp_id ? (
-                    <button
-                      type="button"
-                      className="button-primary"
-                      onClick={() =>
-                        onLaunchPractice(
-                          activeLecture.dpp_id || undefined,
-                          activeChapter.id,
-                          activeChapter.title,
-                          course.title
-                        )
-                      }
-                      style={{ width: '100%', padding: '8px' }}
-                    >
-                      Start Practice Session →
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="button-primary"
-                      disabled={generatingDpp}
-                      onClick={handleGenerateDppForActiveLecture}
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                      }}
-                    >
-                      {generatingDpp ? '✨ AI Generating Questions...' : '✨ Generate DPP for this Lesson →'}
-                    </button>
-                  )}
+                  {(() => {
+                    const availableDppId = activeLecture?.dpp_id || activeChapter?.dpp_id;
+                    if (availableDppId) {
+                      return (
+                        <button
+                          type="button"
+                          className="button-primary"
+                          onClick={() =>
+                            onLaunchPractice(
+                              availableDppId,
+                              activeChapter?.id,
+                              activeChapter?.title,
+                              course?.title
+                            )
+                          }
+                          style={{ width: '100%', padding: '8px' }}
+                        >
+                          Start Practice Session →
+                        </button>
+                      );
+                    }
+                    return (
+                      <button
+                        type="button"
+                        className="button-primary"
+                        disabled={generatingDpp}
+                        onClick={handleGenerateDppForActiveLecture}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                        }}
+                      >
+                        {generatingDpp ? '✨ AI Generating Questions...' : '✨ Generate DPP for this Lesson →'}
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {/* 2. Timed Chapter Test */}

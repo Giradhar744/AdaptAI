@@ -210,6 +210,38 @@ async def get_lecture_dpp(
     return await ContentGenService.get_dpp_by_id(session, dpp.id)
 
 
+@router.get("/chapters/{id}/dpp", response_model=DPPResponse)
+async def get_chapter_dpp(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Retrieves the DPP questions for a chapter (via any of its lectures or topics)."""
+    # 1. Check lectures in this chapter
+    lec_res = await session.execute(select(Lecture.id).where(Lecture.chapter_id == id))
+    lec_ids = [row[0] for row in lec_res.all()]
+    if lec_ids:
+        dpp_res = await session.execute(
+            select(DPP).where(DPP.lecture_id.in_(lec_ids)).options(selectinload(DPP.questions))
+        )
+        dpp = dpp_res.scalar_one_or_none()
+        if dpp:
+            return await ContentGenService.get_dpp_by_id(session, dpp.id)
+
+    # 2. Check topics in this chapter
+    top_res = await session.execute(select(Topic.id).where(Topic.chapter_id == id))
+    top_ids = [row[0] for row in top_res.all()]
+    if top_ids:
+        dpp_res = await session.execute(
+            select(DPP).where(DPP.topic_id.in_(top_ids)).options(selectinload(DPP.questions))
+        )
+        dpp = dpp_res.scalar_one_or_none()
+        if dpp:
+            return await ContentGenService.get_dpp_by_id(session, dpp.id)
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No DPP found for this chapter.")
+
+
 class QuickDPPRequest(BaseModel):
     chapter_id: str
     topic_prompt: str

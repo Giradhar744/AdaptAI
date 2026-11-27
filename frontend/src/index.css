@@ -172,16 +172,17 @@ body {
 
 /* Container & Layout */
 .container {
-  max-width: 1200px;
+  max-width: 1440px;
+  width: 100%;
   margin: 0 auto;
-  padding: var(--space-6);
+  padding: var(--space-2) var(--space-8) var(--space-6) var(--space-8);
 }
 
 .header-brand {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4) 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -209,6 +210,21 @@ body {
   border-radius: var(--radius-md);
   padding: var(--space-6);
   box-shadow: var(--shadow-sm);
+}
+
+/* Practice Session Responsive 2-Column Workspace */
+.practice-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(380px, 460px);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .practice-workspace-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
 }
 
 .portal-grid {

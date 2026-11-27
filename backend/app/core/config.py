@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # NVIDIA NIM Specific Configuration (Free API / Models)
     NVIDIA_API_KEY: Optional[str] = None
-    NVIDIA_MODEL: str = "nvidia/nemotron-3.5-super-vl-120b-a12b"
+    NVIDIA_MODEL: str = "meta/llama-3.3-70b-instruct"
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
 
     TTS_PROVIDER: str = "fake"

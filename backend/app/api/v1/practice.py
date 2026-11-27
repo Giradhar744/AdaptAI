@@ -22,11 +22,11 @@ router = APIRouter(tags=["Practice & ZPD Scaffolding"])
 async def start_dpp_session(
     id: str,
     req: DPPSessionStartRequest,
-    current_student: User = Depends(require_student),
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """Starts a new Daily Practice Problem session in Independent or AI-Guided mode."""
-    return await PracticeService.start_dpp_session(session, id, current_student, req.mode)
+    return await PracticeService.start_dpp_session(session, id, current_user, req.mode)
 
 
 @router.post("/dpp-sessions/{id}/hint", response_model=HintResponse)

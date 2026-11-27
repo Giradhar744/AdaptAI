@@ -372,7 +372,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <p style={{ color: 'var(--text-secondary)' }}>No courses match your filter.</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: 'var(--space-4)' }}>
               {filteredCourses.map((c) => {
                 const isRecommended =
                   c.age_band_code === recommendedBand ||
@@ -387,28 +387,27 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       flexDirection: 'column',
                       justifyContent: 'space-between',
                       border: isRecommended ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
-                      position: 'relative',
                     }}
                   >
-                    {isRecommended && (
-                      <span
-                        className="brand-badge"
-                        style={{
-                          position: 'absolute',
-                          top: '12px',
-                          right: '12px',
-                          background: 'var(--primary)',
-                          color: '#ffffff',
-                          fontSize: '0.75rem',
-                        }}
-                      >
-                        ⭐ Best Match
-                      </span>
-                    )}
-
                     <div>
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)', minHeight: '28px' }}>
                         <span className="brand-badge">{c.subject}</span>
+                        {isRecommended && (
+                          <span
+                            className="brand-badge"
+                            style={{
+                              background: 'var(--primary)',
+                              color: '#ffffff',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            ⭐ Best Match
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
                         <span className="btn-a11y" style={{ fontSize: '0.75rem' }}>
                           {formatStudentTrack(c.age_band_label || c.age_band_code)}
                         </span>
@@ -489,40 +488,81 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               </button>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 'var(--space-4)' }}>
-              {enrolledCourses.map((c) => (
-                <div key={c.id} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
-                      <span className="brand-badge" style={{ background: '#059669', color: '#ffffff' }}>
-                        Enrolled
-                      </span>
-                      <span className="brand-badge">{c.subject}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: 'var(--space-4)' }}>
+              {enrolledCourses.map((c) => {
+                const isRecommended =
+                  c.age_band_code === recommendedBand ||
+                  c.age_band_code === diagnosticResult?.progression_age_band;
+
+                return (
+                  <div
+                    key={c.id}
+                    className="card"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      border: isRecommended ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div>
+                      {/* Top status row: Enrolled badge on left, Best Match badge on right */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)', minHeight: '28px' }}>
+                        <span className="brand-badge" style={{ background: '#059669', color: '#ffffff', fontWeight: 600 }}>
+                          Enrolled
+                        </span>
+                        {isRecommended && (
+                          <span
+                            className="brand-badge"
+                            style={{
+                              background: 'var(--primary)',
+                              color: '#ffffff',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            ⭐ Best Match
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Course classification row: Subject and Batch Track */}
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+                        <span className="brand-badge">{c.subject}</span>
+                        <span className="btn-a11y" style={{ fontSize: '0.75rem' }}>
+                          {formatStudentTrack(c.age_band_label || c.age_band_code)}
+                        </span>
+                      </div>
+
+                      <h3 style={{ fontSize: '1.1875rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                        {c.title}
+                      </h3>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: '1.5', marginBottom: 'var(--space-4)' }}>
+                        {c.description || 'Watch lessons, take daily practice with AI speech hints, and complete chapter tests.'}
+                      </p>
                     </div>
 
-                    <h3 style={{ fontSize: '1.1875rem', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
-                      {c.title}
-                    </h3>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: '1.5', marginBottom: 'var(--space-4)' }}>
-                      {c.description || 'Watch lessons, take daily practice with AI speech hints, and complete chapter tests.'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
-                      Instructor: <strong>{c.teacher_name}</strong> · Chapters: <strong>{c.chapters_count || 1}</strong>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)', fontSize: '0.875rem' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          Teacher: <strong>{c.teacher_name}</strong>
+                        </span>
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          Chapters: <strong>{c.chapters_count || 1}</strong>
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="button-primary"
+                        onClick={() => onEnterCourse(c.id)}
+                        style={{ width: '100%', padding: '8px 12px' }}
+                      >
+                        Enter Course Room →
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="button-primary"
-                      onClick={() => onEnterCourse(c.id)}
-                      style={{ width: '100%', padding: '10px 14px' }}
-                    >
-                      Enter Course Room →
-                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

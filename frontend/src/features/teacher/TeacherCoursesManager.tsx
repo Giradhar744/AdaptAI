@@ -908,7 +908,7 @@ export const TeacherCoursesManager: React.FC<TeacherCoursesManagerProps> = ({
                             <input
                               type="text"
                               className="input-a11y"
-                              placeholder="https://www.w3schools.com/html/mov_bbb.mp4"
+                              placeholder="https://www.youtube.com/watch?v=... or direct MP4 URL"
                               value={newVideoUrl}
                               onChange={(e) => setNewVideoUrl(e.target.value)}
                               style={{ width: '100%', fontSize: '0.875rem' }}

@@ -247,7 +247,7 @@ const AppContent: React.FC = () => {
           <nav
             aria-label="Breadcrumb navigation"
             style={{
-              marginBottom: 'var(--space-4)',
+              margin: 'var(--space-2) 0',
               display: 'flex',
               alignItems: 'center',
               gap: 'var(--space-2)',
